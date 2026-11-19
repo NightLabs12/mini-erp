@@ -1,10 +1,36 @@
 # syntax=docker/dockerfile:1
 
 # ---------------------------------------------------------------------------
-# Tahap 1: dependensi Composer.
-# Dipisah agar layer vendor di-cache selama composer.json dan lock tidak berubah.
+# Tahap dasar: PHP 8.3 dengan ekstensi yang dibutuhkan aplikasi.
+# Dipakai bersama oleh tahap vendor dan runtime, sehingga Composer memverifikasi
+# requirement terhadap platform yang benar-benar sama dengan runtime.
 # ---------------------------------------------------------------------------
-FROM composer:2 AS vendor
+FROM php:8.3-fpm-alpine AS base
+
+RUN apk add --no-cache \
+        postgresql-dev \
+        libzip-dev \
+        icu-dev \
+        oniguruma-dev \
+        libpng-dev \
+        freetype-dev \
+        libjpeg-turbo-dev \
+        git \
+        unzip \
+        $PHPIZE_DEPS \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql bcmath intl zip gd opcache \
+    && apk del $PHPIZE_DEPS
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+COPY docker/php/php.ini /usr/local/etc/php/conf.d/zz-mini-erp.ini
+
+# ---------------------------------------------------------------------------
+# Tahap vendor: dependensi Composer dipisah agar layer ini di-cache selama
+# composer.json dan composer.lock tidak berubah.
+# ---------------------------------------------------------------------------
+FROM base AS vendor
 
 WORKDIR /app
 
@@ -22,26 +48,12 @@ COPY backend/ ./
 RUN composer dump-autoload --optimize --no-scripts
 
 # ---------------------------------------------------------------------------
-# Tahap 2: runtime php-fpm.
-# Image berisi kode dan vendor, sehingga bisa langsung dijalankan tanpa bind
-# mount. Pengembangan lokal menambahkan bind mount lewat docker-compose.override.yml.
+# Tahap runtime: kode dan vendor disalin ke image, sehingga container bisa
+# berjalan tanpa bind mount. Pengembangan lokal menambahkan bind mount lewat
+# docker-compose.override.yml.
 # ---------------------------------------------------------------------------
-FROM php:8.3-fpm-alpine
+FROM base
 
-RUN apk add --no-cache \
-        postgresql-dev \
-        libzip-dev \
-        icu-dev \
-        oniguruma-dev \
-        git \
-        unzip \
-        $PHPIZE_DEPS \
-    && docker-php-ext-install -j"$(nproc)" pdo_pgsql bcmath intl zip opcache \
-    && apk del $PHPIZE_DEPS
-
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-COPY docker/php/php.ini /usr/local/etc/php/conf.d/zz-mini-erp.ini
 COPY docker/php/entrypoint.sh /usr/local/bin/mini-erp-entrypoint
 RUN chmod +x /usr/local/bin/mini-erp-entrypoint
 

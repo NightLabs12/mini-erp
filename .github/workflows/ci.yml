@@ -42,7 +42,7 @@ jobs:
       DB_PASSWORD: mini_erp_secret
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -51,7 +51,7 @@ jobs:
           coverage: none
 
       - name: Cache Composer
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: backend/vendor
           key: composer-${{ hashFiles('backend/composer.lock') }}
@@ -79,9 +79,9 @@ jobs:
         working-directory: frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -104,7 +104,7 @@ jobs:
       APP_PORT: 8000
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Versi Docker dan Compose
         run: |
@@ -115,7 +115,7 @@ jobs:
         run: docker compose config --quiet
 
       - name: Build image
-        run: docker compose build
+        run: docker compose build --progress=plain
 
       # Hanya layanan yang dibutuhkan API. Container `node` tidak dijalankan:
       # frontend sudah diverifikasi job `frontend` (lint, typecheck, build).

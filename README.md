@@ -226,6 +226,7 @@ CI menjalankan Pint, Larastan, Pest (service PostgreSQL 16), ESLint, typecheck, 
 - **PostgreSQL di semua lingkungan, termasuk test.** Trigger append-only, constraint CHECK, dan `FOR UPDATE` tidak bisa diuji di SQLite.
 - **`ListQuery` terpusat.** Satu perilaku list endpoint untuk seluruh modul, tanpa merakit SQL dari input pengguna.
 - **bcmath dan brick/math.** Keduanya tersedia, dengan helper uang dibangun di fase Accounting.
+- **Platform Composer dipin ke PHP 8.3.** `config.platform.php = 8.3.0` di `backend/composer.json` membuat `composer.lock` selalu berisi paket yang kompatibel dengan PHP 8.3, meskipun lock dibuat di mesin dengan PHP 8.4. Tanpa pin ini, Symfony 8.x ikut terpasang dan CI (PHP 8.3) gagal saat `composer install`.
 - **Image mandiri, bind mount hanya untuk lokal.** `docker/php/Dockerfile` membangun image berisi kode dan `vendor`; `docker-compose.override.yml` menambahkan bind mount untuk hot reload. CI menguji image tanpa override, sehingga Dockerfile benar-benar terbukti bisa jalan sendiri.
 - **Pengembangan native sebagai jalur utama.** Siklus ubah-jalan lebih cepat tanpa rebuild image; Docker dipakai untuk demo dan diverifikasi CI.
 
