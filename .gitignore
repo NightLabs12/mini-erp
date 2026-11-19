@@ -1,0 +1,44 @@
+# Environment
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs
+*.log
+logs/
+backend/storage/logs/
+
+# Backend
+backend/vendor/
+backend/node_modules/
+backend/.phpunit.cache/
+backend/.phpunit.result.cache
+backend/storage/*.key
+backend/storage/app/public/*
+!backend/storage/app/public/.gitignore
+backend/database/*.sqlite
+backend/bootstrap/cache/*.php
+backend/public/build/
+backend/public/hot
+backend/public/storage
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/tsconfig*.tsbuildinfo
+
+# Tooling and editor
+.idea/
+.vscode/
+.fleet/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+pgdata/

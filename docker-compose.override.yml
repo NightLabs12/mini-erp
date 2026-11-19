@@ -1,0 +1,10 @@
+# Di-merge otomatis oleh `docker compose` saat pengembangan lokal, sehingga
+# kode di host langsung terpakai tanpa rebuild image.
+#
+# CI tidak memakai berkas ini. Job `docker-smoke` menjalankan
+# `docker compose -f docker-compose.yml`, sehingga yang diuji adalah image
+# hasil Dockerfile apa adanya, tanpa bind mount.
+services:
+  app:
+    volumes:
+      - ./backend:/var/www/html

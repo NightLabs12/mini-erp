@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Pint, Larastan, Pest)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mini_erp_test
+          POSTGRES_USER: mini_erp
+          POSTGRES_PASSWORD: mini_erp_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mini_erp -d mini_erp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: mini_erp_test
+      DB_USERNAME: mini_erp
+      DB_PASSWORD: mini_erp_secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, bcmath, intl, zip, gd
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      - run: cp .env.example .env && php artisan key:generate
+
+      - name: Pint
+        run: ./vendor/bin/pint --test
+
+      - name: Larastan
+        run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+
+      - name: Pest
+        run: ./vendor/bin/pest
+
+  frontend:
+    name: Frontend (ESLint, Typecheck, Build)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  docker-smoke:
+    name: Docker Compose smoke (build, migrate, health)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Sengaja tanpa docker-compose.override.yml: yang diuji adalah image hasil
+    # Dockerfile, bukan kode dari bind mount.
+    env:
+      COMPOSE_FILE: docker-compose.yml
+      APP_PORT: 8000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versi Docker dan Compose
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Validasi konfigurasi Compose
+        run: docker compose config --quiet
+
+      - name: Build image
+        run: docker compose build
+
+      # Hanya layanan yang dibutuhkan API. Container `node` tidak dijalankan:
+      # frontend sudah diverifikasi job `frontend` (lint, typecheck, build).
+      - name: Nyalakan postgres, app, nginx dan tunggu healthy (maks 3 menit)
+        run: docker compose up -d --wait --wait-timeout 180 postgres app nginx
+
+      - name: Status layanan
+        run: docker compose ps
+
+      - name: Migrasi database
+        run: docker compose exec -T app php artisan migrate --force --no-interaction
+
+      - name: Cek health endpoint
+        run: |
+          set -euo pipefail
+
+          code="000"
+          for attempt in $(seq 1 30); do
+            code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://127.0.0.1:8000/api/v1/health || true)
+            if [ "$code" = "200" ]; then
+              break
+            fi
+            echo "Percobaan $attempt: HTTP $code, ulangi dalam 2 detik."
+            sleep 2
+          done
+
+          echo "HTTP $code"
+          cat /tmp/health.json
+          echo
+
+          test "$code" = "200"
+          jq -e '.status == "ok" and .checks.database == "ok"' /tmp/health.json
+
+      - name: Log layanan jika gagal
+        if: failure() || cancelled()
+        run: |
+          docker compose ps -a || true
+          docker compose logs --no-color --tail=300 postgres app nginx || true
+
+      - name: Bersihkan
+        if: always()
+        run: docker compose down -v --remove-orphans
+
