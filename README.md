@@ -6,19 +6,30 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 0 selesai: fondasi.**
+**Fase 1 selesai: Core (auth, RBAC, audit trail, penomoran dokumen, settings).**
 
 | Area | Kondisi |
 | --- | --- |
 | Monorepo | `backend/` Laravel 11 API-only, `frontend/` React 18 + Vite + TypeScript |
 | Infra | `docker-compose.yml` (php-fpm, nginx, postgres 16, node), Makefile, GitHub Actions |
-| API dasar | `GET /api/v1/health`, dokumentasi OpenAPI di `/docs/api` |
-| Fondasi backend | Format error JSON global, rate limit API dan login, CORS terbatas, pagination, filter, sort standar, base API Resource |
-| Fondasi frontend | Layout dasar, routing, TanStack Query, halaman status sistem dengan state loading, error, dan retry |
-| Kualitas | Pint, Larastan level 6, Pest, ESLint, `tsc` strict |
+| Auth | Sanctum bearer token, login/logout/me, token expiry, rate limit login per email + IP |
+| RBAC | 6 role, 172 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
+| Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /users/{id}/audit`, `api_request_logs` untuk request mutasi |
+| Penomoran | `DocumentSequenceService` dengan `lockForUpdate` dan unique index, teruji 50 proses paralel |
+| Settings | `settings` bertipe dengan nilai default aman, `account_settings` disiapkan untuk Fase 2 |
+| Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
+| Kualitas | Pint, Larastan level 6, Pest (56 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Core, Master, Purchasing, Sales, Inventory, Accounting, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md).
+Modul Master, Purchasing, Sales, Inventory, Accounting, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+
+### Cakupan Core
+
+- **Auth**: `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` (role + seluruh permission efektif).
+- **User management**: CRUD user, assign role, proteksi hapus diri sendiri dan admin terakhir.
+- **Audit**: setiap create/update/delete model ber-trait `Auditable` tercatat dengan `old_values`, `new_values`, dan `diff`.
+- **Penomoran dokumen**: `{PREFIX}/{YYYY}/{MM}/{0000}` per jenis, tahun, dan bulan.
+- **Settings**: `allow_negative_stock`, `tax_rate` (11), `require_no_draft_on_close`, dan lainnya, lengkap dengan default di kode.
 
 ## Stack
 
@@ -43,7 +54,7 @@ mini-erp/
     src/pages/
     src/lib/               api client, i18n, format
   docker/                  php-fpm, nginx, init database
-  docs/                    SPEC.md, ARCHITECTURE.md
+  docs/                    SPEC.md, ARCHITECTURE.md, API.md, ADR/
   docker-compose.yml
   Makefile
 ```
@@ -156,7 +167,7 @@ make smoke
 
 ## Akun demo
 
-Akun dibuat pada fase Core. Rencananya:
+Dibuat oleh `DemoUserSeeder` saat `make demo` atau `php artisan db:seed`.
 
 | Email | Role |
 | --- | --- |
@@ -169,6 +180,14 @@ Akun dibuat pada fase Core. Rencananya:
 
 Password diambil dari `DEMO_PASSWORD` (default `password`).
 
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@demo.test","password":"password"}'
+```
+
+Token dari respons dipakai sebagai `Authorization: Bearer <token>`.
+
 ## Konfigurasi
 
 Semua variabel ada di `backend/.env.example`.
@@ -180,6 +199,7 @@ Semua variabel ada di `backend/.env.example`.
 | `CORS_ALLOWED_ORIGINS` | Origin frontend yang diizinkan, dipisah koma. |
 | `API_RATE_LIMIT` | Batas request API per menit per user atau IP. |
 | `LOGIN_RATE_LIMIT` | Batas percobaan login per menit per email dan IP. |
+| `API_DOCS_PUBLIC` | Izinkan `/docs/api` diakses tanpa login (default `true` untuk demo). |
 | `DEMO_MODE` | Menonaktifkan perubahan data kritis dan menjadwalkan reset harian. |
 
 ## Kontrak API
@@ -207,6 +227,23 @@ Gagal:
 ```
 
 List endpoint menerima `?search=`, `?filter[kolom]=nilai`, `?filter[kolom][gte]=nilai`, `?sort=kolom` atau `?sort=-kolom`, `?page=`, dan `?per_page=` (maksimum 100). Hanya kolom yang diizinkan per resource yang dipakai.
+
+Daftar endpoint, contoh `curl`, dan kode error ada di [`docs/API.md`](docs/API.md). Dokumentasi interaktif di `http://localhost:8000/docs/api`.
+
+### Permission
+
+Slug mengikuti `{modul}.{resource}.{aksi}`. Daftar lengkapnya dihasilkan dari `App\Domain\Core\Support\PermissionRegistry` dan di-seed oleh `RolePermissionSeeder` (172 permission).
+
+| Role | Cakupan |
+| --- | --- |
+| `admin` | Semua permission |
+| `purchasing` | Purchase penuh, master read, stok read, laporan pembelian |
+| `sales` | Sales penuh, master read, stok read, laporan penjualan |
+| `warehouse` | Inventory penuh, master read, GR view/approve/print, laporan stok |
+| `finance` | Accounting penuh, invoice dan payment approve, seluruh laporan |
+| `viewer` | Hanya aksi `view` di semua modul |
+
+Backend menegakkan lewat Policy (`UserPolicy`, `AuditLogPolicy`) dan middleware `permission:`. Frontend nanti hanya menyembunyikan tombol berdasarkan permission yang sama.
 
 ## Test dan kualitas
 

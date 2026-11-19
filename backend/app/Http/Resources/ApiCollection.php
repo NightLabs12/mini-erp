@@ -10,18 +10,21 @@ use Illuminate\Http\Resources\Json\ResourceCollection;
 /**
  * Membungkus hasil paginasi menjadi { data, meta, links }.
  *
- * Pembungkusan "data" dilakukan oleh ResourceResponse; kelas ini hanya
- * menyeragamkan bentuk meta dan links.
+ * $collects menentukan API Resource yang dipakai untuk setiap baris, sehingga
+ * kolom sensitif tidak pernah ikut terkirim.
  */
 class ApiCollection extends ResourceCollection
 {
     /**
-     * Jangan menebak resource dari nama kelas: ApiCollection bukan pasangan
-     * dari ApiResource yang abstrak.
-     *
-     * @var class-string<JsonResource>
+     * @param  mixed  $resource
+     * @param  class-string<JsonResource>  $collects
      */
-    public $collects = JsonResource::class;
+    public function __construct($resource, string $collects = JsonResource::class)
+    {
+        $this->collects = $collects;
+
+        parent::__construct($resource);
+    }
 
     /**
      * @param  \Illuminate\Http\Request  $request

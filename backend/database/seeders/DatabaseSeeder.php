@@ -9,10 +9,14 @@ use Illuminate\Database\Seeder;
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Dataset demo dibangun bertahap pada fase Core dan Master.
+     * Urutan penting: role dan permission lebih dulu, lalu setting, lalu user demo.
      */
     public function run(): void
     {
-        //
+        $this->call([
+            RolePermissionSeeder::class,
+            SettingSeeder::class,
+            DemoUserSeeder::class,
+        ]);
     }
 }

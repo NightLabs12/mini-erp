@@ -112,6 +112,62 @@ Dua pintu mutasi yang dijaga:
 - `StockService` satu-satunya penulis `stock_ledger` dan `stock_balances`. Ledger append-only, saldo diperbarui dengan moving average dan lock `FOR UPDATE` berurutan `item_id, warehouse_id`.
 - `JournalService` satu-satunya penulis `journals` dan `journal_lines`. Jurnal wajib seimbang, periode harus open, dan akun harus postable.
 
+## Modul Core (Fase 1)
+
+```mermaid
+flowchart TB
+    subgraph Auth
+        L["POST /auth/login"] --> T["Sanctum token (expiry dari SANCTUM_EXPIRATION)"]
+        T --> M["GET /auth/me"]
+    end
+    subgraph RBAC
+        R["RolePermissionSeeder"] --> P["PermissionRegistry: 172 slug"]
+        P --> G["Policy + middleware permission:"]
+    end
+    subgraph Audit
+        E["Model event: created/updated/deleted"] --> S["AuditTrailService"]
+        S --> AL[("audit_logs jsonb")]
+        D["Aksi domain: approve/close"] --> S
+        MW["LogApiRequest (terminate)"] --> RL[("api_request_logs")]
+    end
+    subgraph Numbering
+        N["DocumentSequenceService.next()"] --> DS[("document_sequences")]
+    end
+```
+
+### Auth
+
+- Login memakai `Hash::check`, bukan `Auth::attempt`, karena API tidak memakai session. Kredensial salah selalu menghasilkan `401 INVALID_CREDENTIALS` dengan pesan sama, sehingga tidak membocorkan email terdaftar.
+- Token dibuat dengan `expiresAt` eksplisit; `SANCTUM_EXPIRATION` (menit) menjadi satu-satunya sumber kebenaran.
+- `/auth/me` mengembalikan role dan permission efektif, dipakai frontend untuk menyusun menu.
+- Logout menghapus token yang sedang dipakai, bukan seluruh token pengguna.
+
+### RBAC
+
+- `PermissionRegistry` adalah sumber tunggal: modul, resource, aksi, pola per role. Seeder, test, dan (nanti) menu frontend membaca daftar yang sama.
+- Role disusun dari pola wildcard (`purchase.*.*`, `*.view`) lalu diekspansi menjadi slug konkret. Menambah resource cukup mengubah satu array.
+- Otorisasi di backend memakai Policy per model (`UserPolicy`, `AuditLogPolicy`) dan middleware `permission:` untuk endpoint yang tidak punya model.
+- Admin tidak memakai `Gate::before` yang membuka semua aksi; ia memegang seluruh permission lewat seeder. Alasannya: `Gate::before` juga melewati aturan proteksi seperti "tidak boleh menghapus akun sendiri".
+
+### Audit trail
+
+- Trait `Auditable` memasang hook `created`, `updated`, `deleted` dan menulis lewat `AuditTrailService`.
+- `old_values`, `new_values`, dan `diff` disimpan sebagai jsonb; atribut sensitif (`password`, `remember_token`) dikecualikan di model.
+- `updated` hanya tercatat bila ada atribut yang benar-benar berubah, sehingga audit tidak dipenuhi baris kosong.
+- Event domain (`approved`, `disapproved`, `closed`, `period_closed`) akan memanggil `AuditTrailService::record()` langsung dari Action, karena bukan siklus hidup Eloquent.
+- Pelaku diambil dari `request()->user()` lebih dulu, lalu `Auth::id()`. `Auth::id()` saja tidak cukup karena guard default adalah `web`, sedangkan API memakai `sanctum`.
+- `LogApiRequest` memakai `terminate()` agar penulisan log terjadi setelah respons dikirim dan tidak memperlambat pengguna.
+
+### Penomoran dokumen
+
+Lihat [ADR 0002](ADR/0002-document-numbering-locking.md). Ringkas: `insertOrIgnore` untuk membuat baris periode, `lockForUpdate` untuk menaikkan nomor, unique index sebagai jaring pengaman, dan retry transaksi saat deadlock.
+
+### Settings
+
+- Nilai default didefinisikan di `SettingService::DEFAULTS`, bukan hanya di seeder, sehingga instalasi baru dan test berperilaku sama.
+- Akses bertipe: `bool()`, `int()`, `decimal()`, `get()` dengan fallback.
+- `account_settings` sudah ada tetapi belum berisi baris; pemetaan akun diisi pada Fase 2 bersama tabel `accounts`.
+
 ## Keamanan
 
 - Sanctum bearer token dengan masa berlaku dari `SANCTUM_EXPIRATION`.
@@ -119,6 +175,7 @@ Dua pintu mutasi yang dijaga:
 - CORS dibatasi ke origin yang didaftarkan di `CORS_ALLOWED_ORIGINS`.
 - Respons error tidak pernah membocorkan stack trace. Detail internal hanya masuk log.
 - `.env` tidak masuk repo, hanya `.env.example`.
+- Dokumen OpenAPI terbuka secara default untuk demo (`API_DOCS_PUBLIC=true`); matikan bila instance memakai data nyata.
 
 ## Container
 

@@ -31,6 +31,10 @@ return [
 
     'demo_mode' => (bool) env('DEMO_MODE', false),
 
+    'docs_public' => (bool) env('API_DOCS_PUBLIC', true),
+
+    'demo_password' => env('DEMO_PASSWORD', 'password'),
+
     'api_rate_limit' => (int) env('API_RATE_LIMIT', 120),
 
     'login_rate_limit' => (int) env('LOGIN_RATE_LIMIT', 5),
