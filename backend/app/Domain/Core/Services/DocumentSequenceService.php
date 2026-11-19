@@ -12,13 +12,19 @@ use RuntimeException;
 /**
  * Penomoran dokumen: {PREFIX}/{YYYY}/{MM}/{0000}.
  *
+ * Periode nomor selalu mengikuti tanggal dokumen ($date), bukan jam sistem.
+ * Dokumen bertanggal bulan lalu tetap memperoleh nomor pada seri bulan itu,
+ * meskipun dibuat hari ini. Parameter $date hanya boleh kosong untuk kasus
+ * yang memang memakai tanggal hari ini (misalnya dokumen dibuat saat itu juga).
+ *
  * Alur aman untuk konkurensi:
  * 1. insertOrIgnore membuat baris periode bila belum ada (tidak error saat balapan).
  * 2. lockForUpdate mengunci baris sehingga hanya satu proses yang menaikkan nomor.
  * 3. Unique index (doc_type, year, month) menjadi jaring pengaman terakhir.
  *
  * DB::transaction dengan attempts > 1 mengulang otomatis bila PostgreSQL
- * mendeteksi deadlock atau serialization failure.
+ * mendeteksi deadlock atau serialization failure. Karena penomoran ikut
+ * transaksi pemanggil (savepoint), rollback tidak meninggalkan celah nomor.
  */
 final class DocumentSequenceService
 {

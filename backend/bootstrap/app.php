@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Exceptions\ApiException;
+use App\Http\Middleware\BlockDemoWrites;
+use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\LogApiRequest;
 use Illuminate\Auth\AuthenticationException;
@@ -40,6 +42,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
+            'active' => EnsureUserIsActive::class,
+            'demo.readonly' => BlockDemoWrites::class,
             'permission' => PermissionMiddleware::class,
             'role' => RoleMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,

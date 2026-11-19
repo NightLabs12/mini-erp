@@ -81,9 +81,13 @@ Mencabut token yang sedang dipakai.
 Catatan:
 
 - `roles` berisi nama role yang ada (`admin`, `purchasing`, `sales`, `warehouse`, `finance`, `viewer`).
+- `is_active` (default `true`) menandai akun boleh dipakai. Token milik akun nonaktif ditolak `403 USER_INACTIVE`.
+- Mengubah password mencabut seluruh token user tersebut, kecuali token yang dipakai pelaku saat mengubah passwordnya sendiri.
+- Menonaktifkan atau menghapus user langsung mencabut semua tokennya.
 - Pengguna tidak dapat menghapus akunnya sendiri (`403`).
-- Role admin tidak dapat dicabut dari admin terakhir (`409 LAST_ADMIN`).
+- Role admin tidak dapat dicabut dari admin terakhir (`409 LAST_ADMIN`), dan admin aktif terakhir tidak dapat dinonaktifkan (`409 LAST_ADMIN`).
 - Hapus user bersifat soft delete; email bisa dipakai kembali.
+- Saat `DEMO_MODE=true`, semua perubahan user ditolak `403 DEMO_MODE_READONLY`.
 
 Parameter daftar: `?search=`, `?filter[role]=sales`, `?filter[email]=`, `?sort=name`, `?page=`, `?per_page=`.
 
@@ -104,9 +108,11 @@ Satu baris berisi `old_values`, `new_values`, dan `diff` (jsonb). Atribut sensit
 | `VALIDATION_ERROR` | 422 | Payload tidak lolos FormRequest |
 | `UNAUTHENTICATED` | 401 | Token tidak ada, salah, atau kedaluwarsa |
 | `INVALID_CREDENTIALS` | 401 | Email atau password salah |
+| `USER_INACTIVE` | 403 | Akun dinonaktifkan (login dengan password benar, atau token masih dipakai) |
 | `FORBIDDEN` | 403 | Token valid tetapi permission kurang |
 | `NOT_FOUND` | 404 | Resource tidak ada |
 | `RATE_LIMITED` | 429 | Melewati batas request |
-| `LAST_ADMIN` | 409 | Mencabut role admin terakhir |
+| `DEMO_MODE_READONLY` | 403 | Perubahan data kritis saat `DEMO_MODE=true` |
+| `LAST_ADMIN` | 409 | Mencabut atau menonaktifkan admin aktif terakhir |
 | `UNKNOWN_DOC_TYPE` | 422 | Prefix dokumen tidak dikenal |
 | `SERVER_ERROR` | 500 | Kesalahan tak terduga |

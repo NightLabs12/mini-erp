@@ -6,19 +6,21 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 1 selesai: Core (auth, RBAC, audit trail, penomoran dokumen, settings).**
+**Fase 1 selesai: Core (auth, RBAC, audit trail, penomoran dokumen, settings), termasuk hardening.**
 
 | Area | Kondisi |
 | --- | --- |
 | Monorepo | `backend/` Laravel 11 API-only, `frontend/` React 18 + Vite + TypeScript |
 | Infra | `docker-compose.yml` (php-fpm, nginx, postgres 16, node), Makefile, GitHub Actions |
 | Auth | Sanctum bearer token, login/logout/me, token expiry, rate limit login per email + IP |
+| Keamanan token | User nonaktif (`is_active=false`) ditolak `403 USER_INACTIVE`, user terhapus `401`; ganti password dan nonaktifkan akun mencabut token |
 | RBAC | 6 role, 172 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
-| Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /users/{id}/audit`, `api_request_logs` untuk request mutasi |
-| Penomoran | `DocumentSequenceService` dengan `lockForUpdate` dan unique index, teruji 50 proses paralel |
+| Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /users/{id}/audit`, `api_request_logs` tanpa body/header/query |
+| Penomoran | `DocumentSequenceService` mengikuti `doc_date`, reset per bulan, tanpa celah saat rollback, teruji 50 proses paralel |
+| Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
 | Settings | `settings` bertipe dengan nilai default aman, `account_settings` disiapkan untuk Fase 2 |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (56 test), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (82 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
 Modul Master, Purchasing, Sales, Inventory, Accounting, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
@@ -26,10 +28,16 @@ Modul Master, Purchasing, Sales, Inventory, Accounting, dan Manufacturing dikerj
 ### Cakupan Core
 
 - **Auth**: `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` (role + seluruh permission efektif).
-- **User management**: CRUD user, assign role, proteksi hapus diri sendiri dan admin terakhir.
+- **User management**: CRUD user, assign role, aktif/nonaktif, proteksi hapus diri sendiri dan admin aktif terakhir.
 - **Audit**: setiap create/update/delete model ber-trait `Auditable` tercatat dengan `old_values`, `new_values`, dan `diff`.
-- **Penomoran dokumen**: `{PREFIX}/{YYYY}/{MM}/{0000}` per jenis, tahun, dan bulan.
+- **Penomoran dokumen**: `{PREFIX}/{YYYY}/{MM}/{0000}` per jenis, tahun, dan bulan, mengikuti tanggal dokumen.
 - **Settings**: `allow_negative_stock`, `tax_rate` (11), `require_no_draft_on_close`, dan lainnya, lengkap dengan default di kode.
+
+### Mode demo
+
+`DEMO_MODE=true` mengaktifkan middleware `demo.readonly`: perubahan data user, role, dan setting ditolak dengan `403 DEMO_MODE_READONLY`, sementara transaksi bisnis tetap bisa dicoba. Perintah `php artisan demo:reset` berjalan di luar jalur HTTP sehingga tidak terpengaruh.
+
+> **Wajib aktif pada deploy publik.** Setiap instance demo yang dapat diakses orang lain harus memakai `DEMO_MODE=true`, karena siapa pun yang login sebagai admin dapat mengubah akun dan role tanpa perlindungan ini. Untuk instance dengan data nyata, matikan mode demo tetapi tetap batasi akses lewat jaringan atau VPN.
 
 ## Stack
 

@@ -55,6 +55,7 @@ final class UserController extends Controller
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'password' => $data['password'],
+                'is_active' => $data['is_active'] ?? true,
             ]);
 
             $user->syncRoles($data['roles'] ?? []);
@@ -82,10 +83,17 @@ final class UserController extends Controller
             $this->ensureAdminRemains($user, $data['roles']);
         }
 
-        DB::transaction(function () use ($data, $user): void {
-            $attributes = array_intersect_key($data, array_flip(['name', 'email']));
+        if (($data['is_active'] ?? true) === false) {
+            $this->ensureAdminRemainsActive($user);
+        }
 
-            if (array_key_exists('password', $data) && $data['password'] !== null) {
+        $passwordChanged = array_key_exists('password', $data) && $data['password'] !== null;
+        $deactivated = array_key_exists('is_active', $data) && $data['is_active'] === false;
+
+        DB::transaction(function () use ($data, $user, $passwordChanged, $deactivated): void {
+            $attributes = array_intersect_key($data, array_flip(['name', 'email', 'is_active']));
+
+            if ($passwordChanged) {
                 $attributes['password'] = $data['password'];
             }
 
@@ -93,6 +101,17 @@ final class UserController extends Controller
 
             if (array_key_exists('roles', $data)) {
                 $user->syncRoles($data['roles']);
+            }
+
+            // Token lama tidak boleh tetap berlaku setelah password berubah
+            // atau akun dinonaktifkan. Token yang sedang dipakai dipertahankan
+            // hanya bila pelaku mengubah password akunnya sendiri.
+            if ($deactivated) {
+                $user->revokeTokens();
+            } elseif ($passwordChanged) {
+                $keepCurrent = $this->currentUserId() === $user->getKey();
+
+                $user->revokeTokens($keepCurrent ? $this->currentTokenId() : null);
             }
         });
 
@@ -105,7 +124,10 @@ final class UserController extends Controller
 
         $this->ensureAdminRemains($user, []);
 
-        $user->delete();
+        DB::transaction(function () use ($user): void {
+            $user->revokeTokens();
+            $user->delete();
+        });
 
         return response()->noContent();
     }
@@ -137,5 +159,37 @@ final class UserController extends Controller
                 'LAST_ADMIN',
             );
         }
+    }
+
+    private function ensureAdminRemainsActive(User $user): void
+    {
+        if (! $user->hasRole('admin') || ! $user->is_active) {
+            return;
+        }
+
+        $otherActiveAdmins = User::query()
+            ->role('admin')
+            ->whereKeyNot($user->getKey())
+            ->where('is_active', true)
+            ->count();
+
+        if ($otherActiveAdmins === 0) {
+            throw ApiException::conflict(
+                'Admin aktif terakhir tidak dapat dinonaktifkan.',
+                'LAST_ADMIN',
+            );
+        }
+    }
+
+    private function currentUserId(): int|string|null
+    {
+        return request()->user()?->getAuthIdentifier();
+    }
+
+    private function currentTokenId(): ?int
+    {
+        $token = request()->user()?->currentAccessToken();
+
+        return $token instanceof \Laravel\Sanctum\PersonalAccessToken ? (int) $token->getKey() : null;
     }
 }

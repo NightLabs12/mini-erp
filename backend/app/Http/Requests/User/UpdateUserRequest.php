@@ -32,6 +32,7 @@ final class UpdateUserRequest extends FormRequest
                     ->ignore($userId),
             ],
             'password' => ['sometimes', 'nullable', 'string', 'min:8', 'max:255'],
+            'is_active' => ['sometimes', 'boolean'],
             'roles' => ['sometimes', 'array'],
             'roles.*' => ['string', Rule::exists('roles', 'name')],
         ];

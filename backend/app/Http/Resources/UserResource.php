@@ -27,6 +27,7 @@ final class UserResource extends ApiResource
             'email' => $this->user->email,
             'roles' => $this->user->roleNames(),
             'permissions' => $this->user->permissionNames(),
+            'is_active' => (bool) $this->user->is_active,
             'created_at' => $this->user->created_at?->toIso8601String(),
             'updated_at' => $this->user->updated_at?->toIso8601String(),
             'deleted_at' => $this->user->deleted_at?->toIso8601String(),

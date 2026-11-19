@@ -25,12 +25,18 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'is_active',
     ];
 
     /** @var list<string> */
     protected $hidden = [
         'password',
         'remember_token',
+    ];
+
+    /** @var array<string, mixed> */
+    protected $attributes = [
+        'is_active' => true,
     ];
 
     /** @return list<string> */
@@ -45,7 +51,24 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
+    }
+
+    public function isActive(): bool
+    {
+        return (bool) ($this->is_active ?? true) && ! $this->trashed();
+    }
+
+    public function revokeTokens(?int $exceptTokenId = null): int
+    {
+        $query = $this->tokens();
+
+        if ($exceptTokenId !== null) {
+            $query->whereKeyNot($exceptTokenId);
+        }
+
+        return $query->delete();
     }
 
     protected static function newFactory(): UserFactory

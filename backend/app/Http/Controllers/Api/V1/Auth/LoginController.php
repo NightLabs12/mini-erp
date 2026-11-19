@@ -24,6 +24,12 @@ final class LoginController extends Controller
             throw new ApiException('Email atau password salah.', 'INVALID_CREDENTIALS', 401);
         }
 
+        // Status aktif baru diungkap setelah password terbukti benar, sehingga
+        // penyerang tanpa password tidak dapat memetakan akun yang ada.
+        if (! $user->isActive()) {
+            throw new ApiException('Akun Anda dinonaktifkan. Hubungi administrator.', 'USER_INACTIVE', 403);
+        }
+
         $expiresAt = now()->addMinutes((int) config('sanctum.expiration', 1440));
         $token = $user->createToken($data['device_name'] ?? 'api', ['*'], $expiresAt);
 

@@ -17,7 +17,7 @@ Route::prefix('v1')->group(function (): void {
         ->middleware('throttle:login')
         ->name('api.v1.auth.login');
 
-    Route::middleware('auth:sanctum')->group(function (): void {
+    Route::middleware(['auth:sanctum', 'active', 'demo.readonly'])->group(function (): void {
         Route::post('auth/logout', LogoutController::class)->name('api.v1.auth.logout');
         Route::get('auth/me', MeController::class)->name('api.v1.auth.me');
 
