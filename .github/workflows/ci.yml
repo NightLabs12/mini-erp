@@ -68,7 +68,20 @@ jobs:
         run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
       - name: Pest
-        run: ./vendor/bin/pest
+        id: pest
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./vendor/bin/pest --colors=never 2>&1 | tee /tmp/pest.log
+
+      # Log job butuh hak admin repo. Langkah ini membuat penyebab kegagalan
+      # terbaca publik sebagai annotation pada commit.
+      - name: Ringkas kegagalan Pest
+        if: steps.pest.outcome == 'failure'
+        run: |
+          message=$(tail -80 /tmp/pest.log | sed -e 's/%/%25/g' -e ':a' -e 'N' -e '$!ba' -e 's/\n/%0A/g')
+          echo "::error title=Pest gagal::${message:0:6000}"
+          exit 1
 
   frontend:
     name: Frontend (ESLint, Typecheck, Build)
