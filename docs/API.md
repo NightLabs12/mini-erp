@@ -101,6 +101,91 @@ Filter: `?filter[auditable_type]=user`, `?filter[auditable_id]=7`, `?filter[user
 
 Satu baris berisi `old_values`, `new_values`, dan `diff` (jsonb). Atribut sensitif seperti `password` tidak pernah masuk audit.
 
+Riwayat per resource tersedia di `GET /{resource}/{id}/audit` untuk `users`, `units`, `item-categories`, `items`, `warehouses`, `suppliers`, `customers`, dan `selling-prices`.
+
+## Master data
+
+Semua resource memakai pola yang sama: CRUD RESTful, pagination (`?page`, `?per_page`), `?search=`, `?filter[kolom]=`, `?sort=`, soft delete, dan audit.
+
+| Resource | Path | Permission prefix |
+| --- | --- | --- |
+| Satuan | `/units` | `master.unit.*` |
+| Kategori item | `/item-categories` | `master.item-category.*` |
+| Item | `/items` | `master.item.*` |
+| Konversi satuan item | `/items/{item}/unit-conversions` | `master.item.view` / `master.item.update` |
+| Gudang | `/warehouses` | `master.warehouse.*` |
+| Supplier | `/suppliers` | `master.supplier.*` |
+| Customer | `/customers` | `master.customer.*` |
+| Harga jual | `/selling-prices` | `master.selling-price.*` |
+
+### Item dan konversi satuan
+
+```bash
+curl -X POST http://localhost:8000/api/v1/items \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "sku": "KAOS-POLOS",
+    "name": "Kaos Polos",
+    "category_id": 1,
+    "base_unit_id": 1,
+    "min_stock": 24,
+    "conversions": [
+      {"unit_id": 2, "factor_to_base": 12, "is_sales_default": true},
+      {"unit_id": 3, "factor_to_base": 144, "is_purchase_default": true}
+    ]
+  }'
+```
+
+Aturan yang ditegakkan:
+
+- `sku` unik di antara item aktif (`WHERE deleted_at IS NULL`); SKU boleh dipakai lagi setelah item dihapus.
+- `base_unit_id` harus satuan yang ada.
+- Setiap `conversions[].factor_to_base` harus > 0.
+- Satu `unit_id` hanya boleh muncul sekali (rule `distinct`), dan tidak boleh sama dengan satuan base.
+- Saat update, daftar konversi diselaraskan: unit baru ditambah, unit yang hilang dihapus, faktor yang berubah diperbarui.
+
+Konversi juga bisa dikelola satu per satu lewat `/items/{item}/unit-conversions`.
+
+### Harga jual dan lookup
+
+```bash
+curl "http://localhost:8000/api/v1/selling-prices/lookup?item_id=1&unit_id=3&customer_id=2&date=2026-11-20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{
+  "data": {
+    "id": 7,
+    "item_id": 1,
+    "unit_id": 3,
+    "customer_id": 2,
+    "price": "1440000.0000",
+    "unit_price_base": "10000.0000",
+    "valid_from": "2026-11-01",
+    "valid_to": null
+  }
+}
+```
+
+Urutan prioritas: harga khusus customer yang valid pada tanggal itu, lalu harga umum. Bila beberapa baris valid, `valid_from` terbaru menang. Tanpa harga yang cocok, endpoint mengembalikan `404 SELLING_PRICE_NOT_FOUND`.
+
+### Penghapusan master
+
+Penghapusan ditolak `409 MASTER_IN_USE` bila data masih direferensikan:
+
+| Master | Dicek terhadap |
+| --- | --- |
+| Satuan | item (base unit), konversi, harga jual |
+| Kategori | item |
+| Item | harga jual, dokumen pembelian/penjualan, stok |
+| Gudang | dokumen dan saldo stok |
+| Supplier | dokumen pembelian |
+| Customer | dokumen penjualan dan harga khusus |
+
+Tabel dokumen yang belum ada pada fase ini otomatis dilewati, dan ikut diperiksa begitu tabelnya dibuat.
+
 ## Kode error
 
 | Kode | HTTP | Kapan |
@@ -113,6 +198,10 @@ Satu baris berisi `old_values`, `new_values`, dan `diff` (jsonb). Atribut sensit
 | `NOT_FOUND` | 404 | Resource tidak ada |
 | `RATE_LIMITED` | 429 | Melewati batas request |
 | `DEMO_MODE_READONLY` | 403 | Perubahan data kritis saat `DEMO_MODE=true` |
+| `MASTER_IN_USE` | 409 | Master masih direferensikan data lain |
+| `UNIT_NOT_CONVERTIBLE` | 422 | Satuan tidak terdefinisi untuk item |
+| `CONVERSION_NOT_FOUND` | 404 | Konversi bukan milik item tersebut |
+| `SELLING_PRICE_NOT_FOUND` | 404 | Tidak ada harga jual yang berlaku |
 | `LAST_ADMIN` | 409 | Mencabut atau menonaktifkan admin aktif terakhir |
 | `UNKNOWN_DOC_TYPE` | 422 | Prefix dokumen tidak dikenal |
 | `SERVER_ERROR` | 500 | Kesalahan tak terduga |

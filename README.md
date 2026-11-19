@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 1 selesai: Core (auth, RBAC, audit trail, penomoran dokumen, settings), termasuk hardening.**
+**Fase 2 selesai: Master data (units, kategori, item, konversi satuan, gudang, supplier, customer, harga jual).**
 
 | Area | Kondisi |
 | --- | --- |
@@ -15,15 +15,18 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Auth | Sanctum bearer token, login/logout/me, token expiry, rate limit login per email + IP |
 | Keamanan token | User nonaktif (`is_active=false`) ditolak `403 USER_INACTIVE`, user terhapus `401`; ganti password dan nonaktifkan akun mencabut token |
 | RBAC | 6 role, 172 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
-| Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /users/{id}/audit`, `api_request_logs` tanpa body/header/query |
+| Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /{resource}/{id}/audit` untuk user dan seluruh master |
 | Penomoran | `DocumentSequenceService` mengikuti `doc_date`, reset per bulan, tanpa celah saat rollback, teruji 50 proses paralel |
+| Master data | 8 resource CRUD dengan pagination, filter, sort, search, soft delete, dan proteksi hapus saat masih dipakai |
+| Konversi satuan | `UnitConversionService`: Pcs/Pack/Dus, biaya per satuan base, presisi 4 desimal |
+| Harga jual | `GET /selling-prices/lookup` dengan prioritas harga khusus customer, lalu harga umum |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
-| Settings | `settings` bertipe dengan nilai default aman, `account_settings` disiapkan untuk Fase 2 |
+| Settings | `settings` bertipe dengan nilai default aman, `account_settings` disiapkan untuk Fase Accounting |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (82 test), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (141 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Master, Purchasing, Sales, Inventory, Accounting, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Purchasing, Sales, Inventory, Accounting, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -32,6 +35,15 @@ Modul Master, Purchasing, Sales, Inventory, Accounting, dan Manufacturing dikerj
 - **Audit**: setiap create/update/delete model ber-trait `Auditable` tercatat dengan `old_values`, `new_values`, dan `diff`.
 - **Penomoran dokumen**: `{PREFIX}/{YYYY}/{MM}/{0000}` per jenis, tahun, dan bulan, mengikuti tanggal dokumen.
 - **Settings**: `allow_negative_stock`, `tax_rate` (11), `require_no_draft_on_close`, dan lainnya, lengkap dengan default di kode.
+
+### Cakupan Master data
+
+- **Satuan** (`units`), **kategori item** (`item-categories`), **item** (`items`), **gudang** (`warehouses`), **supplier** (`suppliers`), **customer** (`customers`), **harga jual** (`selling-prices`), dan **konversi satuan** (`items/{item}/unit-conversions`).
+- **Item**: SKU unik parsial (`WHERE deleted_at IS NULL`), validasi satuan base, konversi `factor_to_base > 0`, satu satuan hanya boleh muncul sekali, satuan base tidak boleh diulang sebagai konversi.
+- **Konversi satuan**: Kaos Polos base Pcs, Pack = 12 Pcs, Dus = 144 Pcs. Qty dokumen selalu dikonversi ke satuan base; biaya per satuan base dihitung dari harga satuan input.
+- **Harga jual**: prioritas harga khusus customer yang berlaku pada tanggal transaksi, lalu harga umum; baris dengan `valid_from` terbaru menang. Respons lookup menyertakan `unit_price_base`.
+- **Soft delete** pada semua master, dengan unique index parsial. Penghapusan ditolak `409 MASTER_IN_USE` bila data masih dipakai item, konversi, harga jual, atau dokumen (tabel dokumen otomatis ikut diperiksa begitu tersedia).
+- **Seeder awal**: 6 satuan (Pcs, Pack, Dus, Meter, Roll, Kilogram), 6 kategori, 2 gudang.
 
 ### Mode demo
 

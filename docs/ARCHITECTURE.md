@@ -182,6 +182,45 @@ Middleware `EnsureUserIsActive` dipasang setelah `auth:sanctum`, sehingga pemeri
 
 Lihat [ADR 0002](ADR/0002-document-numbering-locking.md). Ringkas: `insertOrIgnore` untuk membuat baris periode, `lockForUpdate` untuk menaikkan nomor, unique index sebagai jaring pengaman, dan retry transaksi saat deadlock.
 
+## Modul Master (Fase 2)
+
+```mermaid
+flowchart LR
+    Unit -->|base_unit| Item
+    Unit -->|konversi| Conv["item_unit_conversions"]
+    Item --> Conv
+    Category["item_categories"] --> Item
+    Item --> Price["selling_prices"]
+    Customer --> Price
+    Unit --> Price
+```
+
+Delapan resource CRUD memakai pola seragam: FormRequest, Policy per model, API Resource, soft delete, dan audit.
+
+### Konversi satuan
+
+- `UnitConversionService` adalah satu-satunya tempat mengubah qty satuan input menjadi `qty_base`, dan sebaliknya menghitung biaya per satuan base. Lihat [ADR 0003](ADR/0003-satuan-base-dan-konversi.md).
+- Semua aritmetika memakai `App\Support\Math\Decimal` (bcmath, pembulatan HALF_UP). Tidak ada float.
+- Konversi yang tidak terdefinisi menghasilkan `422 UNIT_NOT_CONVERTIBLE`, bukan diam-diam memakai faktor 1.
+
+### Harga jual
+
+- `SellingPriceResolver` memilih baris dengan urutan: harga khusus customer dulu (`customer_id IS NOT NULL`), lalu `valid_from` terbaru, lalu `id` terbesar.
+- `valid_from`/`valid_to` null berarti tanpa batas. Tanggal lookup default hari ini, dan bisa dikirim eksplisit lewat `?date=`.
+- Endpoint lookup mengembalikan `unit_price_base` hasil `UnitConversionService`, sehingga frontend tidak menghitung ulang.
+
+### Proteksi penghapusan
+
+- `MasterUsageGuard` membaca `config/master_usage.php`: daftar pasangan tabel dan kolom per model.
+- Tabel yang belum ada dilewati (`Schema::hasTable`), sehingga modul Purchasing dan Sales cukup menambah entri konfigurasi tanpa mengubah guard.
+- Penghapusan yang masih dipakai menghasilkan `409 MASTER_IN_USE` beserta daftar tabel di `errors.references`.
+
+### Audit dan morph map
+
+- Seluruh master memakai trait `Auditable`, sehingga create/update/delete tercatat lengkap dengan `diff`.
+- `Relation::enforceMorphMap` mencantumkan setiap model master. Tanpa entri morph map, audit gagal saat model baru pertama kali disimpan; ini sudah teruji lewat seeder.
+- `GET /{resource}/{id}/audit` tersedia untuk semua master lewat trait `InteractsWithAuditTrail`.
+
 ### Settings
 
 - Nilai default didefinisikan di `SettingService::DEFAULTS`, bukan hanya di seeder, sehingga instalasi baru dan test berperilaku sama.

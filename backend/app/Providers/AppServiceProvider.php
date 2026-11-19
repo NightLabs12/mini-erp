@@ -7,8 +7,23 @@ namespace App\Providers;
 use App\Domain\Core\Models\AuditLog;
 use App\Domain\Core\Models\User;
 use App\Domain\Core\Services\SettingService;
+use App\Domain\Master\Models\Customer;
+use App\Domain\Master\Models\Item;
+use App\Domain\Master\Models\ItemCategory;
+use App\Domain\Master\Models\ItemUnitConversion;
+use App\Domain\Master\Models\SellingPrice;
+use App\Domain\Master\Models\Supplier;
+use App\Domain\Master\Models\Unit;
+use App\Domain\Master\Models\Warehouse;
 use App\Policies\AuditLogPolicy;
+use App\Policies\CustomerPolicy;
+use App\Policies\ItemCategoryPolicy;
+use App\Policies\ItemPolicy;
+use App\Policies\SellingPricePolicy;
+use App\Policies\SupplierPolicy;
+use App\Policies\UnitPolicy;
 use App\Policies\UserPolicy;
+use App\Policies\WarehousePolicy;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -39,6 +54,14 @@ class AppServiceProvider extends ServiceProvider
         // Nama morph yang stabil: auditable_type tidak berubah saat namespace model dirapikan.
         Relation::enforceMorphMap([
             'user' => User::class,
+            'unit' => Unit::class,
+            'item_category' => ItemCategory::class,
+            'item' => Item::class,
+            'item_unit_conversion' => ItemUnitConversion::class,
+            'warehouse' => Warehouse::class,
+            'supplier' => Supplier::class,
+            'customer' => Customer::class,
+            'selling_price' => SellingPrice::class,
         ]);
 
         // Membantu menangkap N+1 query sejak fase pengembangan dan test.
@@ -62,6 +85,13 @@ class AppServiceProvider extends ServiceProvider
     {
         Gate::policy(User::class, UserPolicy::class);
         Gate::policy(AuditLog::class, AuditLogPolicy::class);
+        Gate::policy(Unit::class, UnitPolicy::class);
+        Gate::policy(ItemCategory::class, ItemCategoryPolicy::class);
+        Gate::policy(Item::class, ItemPolicy::class);
+        Gate::policy(Warehouse::class, WarehousePolicy::class);
+        Gate::policy(Supplier::class, SupplierPolicy::class);
+        Gate::policy(Customer::class, CustomerPolicy::class);
+        Gate::policy(SellingPrice::class, SellingPricePolicy::class);
 
         // Dokumentasi API sengaja terbuka untuk demo portofolio. Matikan lewat
         // API_DOCS_PUBLIC=false bila instance dipakai dengan data nyata.
