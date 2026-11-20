@@ -349,6 +349,131 @@ curl -X POST http://localhost:8100/api/v1/supplier-payments \
 - **AP Outstanding** (`?as_of=&supplier_id=`): invoice approved dengan sisa tagihan, due date, dan hari keterlambatan.
 - **AP Aging** (`?as_of=&supplier_id=`): bucket current, 1-30, 31-60, 61-90, dan lebih dari 90 hari.
 
+## Sales
+
+Alur: Sales Order -> Delivery Order (Surat Jalan) -> Sales Invoice -> Customer Payment (Payment In). Semua dokumen memakai state machine `draft -> approved -> closed` dan dapat dibatalkan selama aturan SPEC 3.3 terpenuhi.
+
+| Metode | Path | Permission |
+| --- | --- | --- |
+| GET/POST | `/sales-orders` | `sales.sales-order.view` / `create` |
+| GET/PUT/DELETE | `/sales-orders/{id}` | `view` / `update` / `delete` |
+| POST | `/sales-orders/{id}/approve` | `sales.sales-order.approve` |
+| POST | `/sales-orders/{id}/disapprove` | `sales.sales-order.disapprove` |
+| POST | `/sales-orders/{id}/close` | `sales.sales-order.close` |
+| GET/POST | `/delivery-orders` | `sales.delivery-order.view` / `create` |
+| GET/PUT/DELETE | `/delivery-orders/{id}` | `view` / `update` / `delete` |
+| POST | `/delivery-orders/{id}/approve` | `sales.delivery-order.approve` |
+| POST | `/delivery-orders/{id}/disapprove` | `sales.delivery-order.disapprove` |
+| GET | `/delivery-orders/{id}/print` | `sales.delivery-order.print` |
+| GET/POST | `/sales-invoices` | `sales.sales-invoice.view` / `create` |
+| GET/PUT/DELETE | `/sales-invoices/{id}` | `view` / `update` / `delete` |
+| POST | `/sales-invoices/{id}/approve` | `sales.sales-invoice.approve` |
+| POST | `/sales-invoices/{id}/disapprove` | `sales.sales-invoice.disapprove` |
+| GET | `/sales-invoices/{id}/print` | `sales.sales-invoice.print` |
+| GET/POST | `/customer-payments` | `sales.customer-payment.view` / `create` |
+| GET/PUT/DELETE | `/customer-payments/{id}` | `view` / `update` / `delete` |
+| POST | `/customer-payments/{id}/approve` | `sales.customer-payment.approve` |
+| POST | `/customer-payments/{id}/disapprove` | `sales.customer-payment.disapprove` |
+| GET | `/reports/so-outstanding` | `report.so-outstanding.view` |
+| GET | `/reports/sales-summary` | `report.sales-summary.view` |
+| GET | `/reports/ar-outstanding` | `report.ar-outstanding.view` |
+| GET | `/reports/ar-aging` | `report.ar-aging.view` |
+| GET | `/reports/income-statement` | `report.income-statement.view` |
+
+### Sales Order
+
+```bash
+curl -X POST http://localhost:8100/api/v1/sales-orders \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "customer_id": 1,
+    "warehouse_id": 1,
+    "items": [
+      {"item_id": 1, "unit_id": 3, "qty": "5", "discount_pct": "0"}
+    ]
+  }'
+```
+
+- `unit_price` opsional. Bila kosong, harga diambil dari `selling_prices` sesuai item, satuan, customer, dan tanggal dokumen.
+- Override harga hanya diizinkan dengan permission `sales.sales-order.override-price`. Tanpa permission, harga berbeda ditolak `422 PRICE_OVERRIDE_FORBIDDEN`.
+- Credit limit diperiksa sesuai setting `credit_limit_enforcement`: `off` (tanpa cek), `warn` (respons menyertakan `credit_warning`), `block` (`422 CREDIT_LIMIT_EXCEEDED`). Limit `0` dianggap tanpa batas.
+- SO otomatis `closed` saat seluruh qty base dikirim; `POST /sales-orders/{id}/close` menutup manual.
+- `delivered_qty_base` dan `invoiced_qty_base` per baris menjadi dasar sisa pengiriman/penagihan.
+
+### Delivery Order (Surat Jalan)
+
+```bash
+curl -X POST http://localhost:8100/api/v1/delivery-orders \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "sales_order_id": 1,
+    "items": [
+      {"sales_order_item_id": 1, "qty": "2"}
+    ]
+  }'
+```
+
+- Hanya dari SO approved; parsial diperbolehkan.
+- Approve mengeluarkan stok lewat `StockService` pada average cost saat keluar, menyimpan `cogs_unit_cost_base` dan `total_cogs` per baris, lalu membentuk jurnal `Dr HPP / Cr Persediaan`.
+- Qty tidak boleh melebihi sisa SO (`422 DO_QTY_EXCEEDS_REMAINING`) atau stok tersedia (`422 STOCK_INSUFFICIENT`).
+- Disapprove membalik stok dan jurnal; ditolak bila DO sudah ditagih, ada mutasi lanjutan, atau periode closed.
+- `GET /delivery-orders/{id}/print` menghasilkan PDF Surat Jalan.
+
+### Sales Invoice
+
+```bash
+curl -X POST http://localhost:8100/api/v1/sales-invoices \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "customer_id": 1,
+    "mode": "draft",
+    "items": [
+      {"delivery_order_item_id": 1, "qty": "5"}
+    ]
+  }'
+```
+
+- Satu invoice dapat menagih beberapa DO dari customer yang sama.
+- `due_date` dihitung dari `doc_date + customers.payment_term_days`.
+- `mode=draft` dapat diubah; `mode=final` langsung diposting saat dibuat. Approve selalu mengubah mode menjadi `final`.
+- Jurnal: `Dr Piutang Usaha`, `Cr Penjualan per kategori item`, `Cr PPN Keluaran`.
+- Qty tidak boleh melebihi sisa DO (`422 SI_QTY_EXCEEDS_REMAINING`).
+- Disapprove ditolak bila invoice sudah memiliki pembayaran.
+- `GET /sales-invoices/{id}/print` menghasilkan PDF Invoice.
+
+### Customer Payment (Payment In)
+
+```bash
+curl -X POST http://localhost:8100/api/v1/customer-payments \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "customer_id": 1,
+    "method": "bank",
+    "amount": "11988000.00",
+    "allocations": [
+      {"sales_invoice_id": 1, "amount": "8000000.00"},
+      {"sales_invoice_id": 2, "amount": "3988000.00"}
+    ]
+  }'
+```
+
+- `method` `cash` atau `bank`; `account_id` opsional, default dari `account_settings` (`cash_default`/`bank_default`).
+- Alokasi boleh parsial, tidak boleh melebihi sisa tagihan, dan total alokasi harus sama dengan `amount`.
+- Approve membentuk jurnal `Dr Kas atau Bank / Cr Piutang Usaha` dan menaikkan `paid_amount` invoice.
+- Disapprove membalik jurnal dan mengembalikan `paid_amount`.
+
+### Laporan sales
+
+- **SO Outstanding** (`?from=&to=&customer_id=`): SO approved yang masih memiliki sisa dikirim/ditagih, beserta nilai outstanding.
+- **Sales Summary** (`?from=&to=&customer_id=`): total invoice approved per customer.
+- **AR Outstanding** (`?as_of=&customer_id=`): invoice approved dengan sisa tagihan, due date, dan hari keterlambatan.
+- **AR Aging** (`?as_of=&customer_id=`): bucket current, 1-30, 31-60, 61-90, dan lebih dari 90 hari.
+- **Income Statement** (`?from=&to=`): pendapatan, HPP, laba kotor, beban, dan laba bersih dinamis dari jurnal posted/reversed.
+
 ## Persediaan
 
 | Metode | Path | Permission |
@@ -487,4 +612,18 @@ Semua nilai qty memakai 4 desimal dan nilai uang 2 desimal. Baris pembalik ikut 
 | `TAX_RATE_INVALID` | 422 | Tarif PPN di luar 0-100 |
 | `GOODS_RECEIPT_LINE_INVALID` | 422 | Baris GR tidak terhubung ke PO |
 | `PURCHASE_INVOICE_LINE_INVALID` | 422 | Baris invoice tidak terhubung ke GR |
+| `SELLING_PRICE_NOT_FOUND` | 422 | Item belum punya harga jual dan harga tidak diisi |
+| `PRICE_OVERRIDE_FORBIDDEN` | 422 | Harga berbeda tanpa permission override |
+| `SALES_PRICE_INVALID` | 422 | Harga jual negatif |
+| `SALES_DISCOUNT_INVALID` | 422 | Diskon di luar 0-100 |
+| `CREDIT_LIMIT_EXCEEDED` | 422 | Credit limit terlampaui pada mode block |
+| `SALES_ORDER_NOT_APPROVED` | 409 | DO dibuat dari SO yang belum approved/closed |
+| `DO_QTY_EXCEEDS_REMAINING` | 422 | Qty DO melebihi sisa SO |
+| `DELIVERY_ORDER_NOT_APPROVED` | 409 | Invoice menagih DO yang belum approved |
+| `DELIVERY_ORDER_LINE_INVALID` | 422 | Baris DO tidak terhubung ke SO |
+| `SI_QTY_EXCEEDS_REMAINING` | 422 | Qty invoice melebihi sisa DO |
+| `SALES_INVOICE_MODE_INVALID` | 422 | Mode invoice bukan draft/final |
+| `SALES_INVOICE_LINE_INVALID` | 422 | Baris invoice tidak terhubung ke DO |
+| `SALES_INVOICE_CUSTOMER_MISMATCH` | 422 | Customer invoice berbeda dari customer DO |
+| `PAYMENT_CUSTOMER_MISMATCH` | 422 | Invoice bukan milik customer pembayaran |
 | `SERVER_ERROR` | 500 | Kesalahan tak terduga |

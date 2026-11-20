@@ -36,13 +36,7 @@ it('menyebut tabel dan kolom yang valid untuk setiap referensi master', function
 });
 
 it('menandai tabel referensi yang belum ada sebagai pending secara eksplisit', function (): void {
-    $pending = [
-        'sales_order_items',
-        'delivery_order_items',
-        'sales_orders',
-        'delivery_orders',
-        'sales_invoices',
-    ];
+    $pending = [];
 
     /** @var array<class-string, list<array{0: string, 1: string}>> $references */
     $references = config('master_usage.references', []);

@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 5 selesai: Purchasing (PR -> PO -> GR -> PI -> Payment Out) dengan state machine, pelacakan qty, jurnal, laporan, dan cetak PO.**
+**Fase 6 selesai: Sales (SO -> DO -> SI -> Payment In) dengan harga otomatis, credit limit, HPP moving average, jurnal, laporan, dan cetak Surat Jalan/Invoice.**
 
 | Area | Kondisi |
 | --- | --- |
@@ -14,7 +14,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Infra | `docker-compose.yml` (php-fpm, nginx, postgres 16, node), Makefile, GitHub Actions |
 | Auth | Sanctum bearer token, login/logout/me, token expiry, rate limit login per email + IP |
 | Keamanan token | User nonaktif (`is_active=false`) ditolak `403 USER_INACTIVE`, user terhapus `401`; ganti password dan nonaktifkan akun mencabut token |
-| RBAC | 6 role, 176 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
+| RBAC | 6 role, 177 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
 | Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /{resource}/{id}/audit` untuk user dan seluruh master |
 | Penomoran | `DocumentSequenceService` mengikuti `doc_date`, reset per bulan, tanpa celah saat rollback, teruji 50 proses paralel |
 | Master data | 8 resource CRUD dengan pagination, filter, sort, search, soft delete, dan proteksi hapus saat masih dipakai |
@@ -32,13 +32,19 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | PI | Satu invoice untuk beberapa GR, due date dari payment term, GR/IR, PPN Masukan, selisih harga, Hutang Usaha |
 | Payment Out | Alokasi parsial ke banyak invoice, validasi sisa, jurnal Dr Hutang Usaha / Cr Kas atau Bank |
 | Laporan purchasing | PO Outstanding, Purchase Summary, AP Outstanding, dan AP Aging |
+| Sales | SO -> DO -> SI -> Payment In, state machine, approve/disapprove/close, pelacakan `delivered_qty_base` dan `invoiced_qty_base` |
+| Harga jual SO | Lookup otomatis dari `selling_prices`, override hanya dengan permission `sales.sales-order.override-price`, credit limit off/warn/block |
+| DO | Surat Jalan, parsial, HPP dari average saat keluar, jurnal Dr HPP / Cr Persediaan, tolak melebihi sisa SO/stok |
+| SI | Dari satu/beberapa DO, due date dari payment term, mode draft/final, jurnal Dr Piutang / Cr Penjualan / Cr PPN Keluaran |
+| Payment In | Alokasi parsial multi-invoice, jurnal Dr Kas/Bank / Cr Piutang |
+| Laporan sales | SO Outstanding, Sales Summary, AR Outstanding, AR Aging, dan Income Statement |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
 | Settings | `settings` bertipe dengan nilai default aman; `account_settings` terisi 15 pemetaan akun |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (244 test), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (277 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Sales dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Manufacturing (opsional) dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -81,6 +87,19 @@ Modul Sales dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap a
 - **Laporan**: `GET /reports/po-outstanding`, `/reports/purchase-summary`, `/reports/ap-outstanding`, `/reports/ap-aging`.
 - **Cetak**: `GET /purchase-orders/{id}/print` menghasilkan PDF PO.
 - **Test**: skenario acceptance langkah 1-4, approve GR idempoten, disapprove GR dengan reversal, tolak GR yang sudah ditagih/mutasi lanjutan/periode closed, PI dengan selisih harga, pembayaran parsial multi-invoice, PO parsial/terpenuhi, dan tolak qty melebihi sisa.
+
+### Cakupan Sales
+
+- **Alur dokumen**: Sales Order -> Delivery Order (Surat Jalan) -> Sales Invoice -> Customer Payment (Payment In). Setiap dokumen memakai state machine `draft -> approved -> closed` dan aksi approve/disapprove sesuai aturan SPEC 3.3.
+- **Sales Order**: harga jual diambil otomatis dari `selling_prices` (harga khusus customer lebih diutamakan). Override harga hanya diizinkan dengan permission `sales.sales-order.override-price`; tanpa permission, perbedaan harga ditolak `422 PRICE_OVERRIDE_FORBIDDEN`. Credit limit diperiksa sesuai setting `credit_limit_enforcement` (`off`, `warn`, `block`); limit `0` dianggap tanpa batas. SO otomatis closed saat seluruh qty dikirim dan dapat ditutup manual.
+- **Delivery Order**: hanya dari SO approved; parsial diperbolehkan. Approve memanggil `StockService::issueWithValue()` sehingga HPP memakai average cost saat keluar, menyimpan `cogs_unit_cost_base` per baris, dan membentuk jurnal `Dr HPP / Cr Persediaan` per kategori. Qty dibatasi sisa SO dan stok tersedia (`STOCK_INSUFFICIENT`).
+- **Sales Invoice**: dapat menagih satu atau beberapa DO. Harga mengikuti harga SO. `due_date` dihitung dari `customers.payment_term_days`. Mode `draft` dapat diubah; mode `final` langsung diposting. Jurnal `Dr Piutang Usaha / Cr Penjualan per kategori / Cr PPN Keluaran`.
+- **Customer Payment**: alokasi parsial ke banyak invoice, tidak boleh melebihi sisa, total alokasi harus sama dengan amount. Metode `cash`/`bank` memakai akun dari `account_settings` atau `account_id`. Jurnal `Dr Kas/Bank / Cr Piutang Usaha`.
+- **Disapprove** ditolak bila ada dokumen turunan aktif, invoice sudah dibayar, atau periode closed. DO yang sudah ditagih tidak dapat dibatalkan.
+- **Endpoint**: CRUD `/sales-orders`, `/delivery-orders`, `/sales-invoices`, `/customer-payments`; aksi `approve`, `disapprove`, `close`, `print`, dan `audit`.
+- **Cetak**: `GET /delivery-orders/{id}/print` (Surat Jalan) dan `GET /sales-invoices/{id}/print` (Invoice).
+- **Laporan**: `GET /reports/so-outstanding`, `/reports/sales-summary`, `/reports/ar-outstanding`, `/reports/ar-aging`, serta `/reports/income-statement` untuk laba kotor/bersih dinamis.
+- **Test**: skenario acceptance langkah 5-8, HPP average, jurnal HPP/Piutang/PPN, DO dan invoice parsial, tolak melebihi stok/SO/sisa DO, harga otomatis, override permission, credit limit warn/block, dan pembayaran multi-invoice.
 
 ### Mode demo
 

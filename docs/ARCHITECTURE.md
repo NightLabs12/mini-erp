@@ -370,6 +370,72 @@ flowchart LR
 
 `ReconciliationService` otomatis memeriksa AP (`purchase_invoices` approved) dan Persediaan (`stock_balances`) karena tabelnya sudah ada. Tutup periode akan gagal bila saldo GL Hutang Usaha/Persediaan tidak sama dengan sumber dokumen.
 
+## Modul Sales (Fase 6)
+
+```mermaid
+flowchart LR
+    SO["Sales Order"] -->|parsial / penuh| DO["Delivery Order"]
+    DO -->|satu / beberapa| SI["Sales Invoice"]
+    SI -->|alokasi| PAY["Customer Payment (In)"]
+    SO --> SP["SellingPriceResolver"]
+    DO --> SS["StockService"]
+    DO --> JS["JournalService"]
+    SI --> JS
+    PAY --> JS
+    SO --> REP["SO Outstanding / Sales Summary"]
+    SI --> AR["AR Outstanding / AR Aging"]
+    SI --> IS["Income Statement"]
+```
+
+### Harga jual dan credit limit
+
+- SO memakai `SellingPriceResolver` yang sama dengan endpoint lookup: harga khusus customer yang valid lebih diutamakan, lalu harga umum, dengan `valid_from` terbaru menang.
+- `unit_price` per satuan input; `unit_price_base` dihitung `UnitConversionService::unitCostPerBase()` sehingga invoice dan laporan memakai harga per satuan base.
+- Override harga dibanding harga berlaku membutuhkan permission `sales.sales-order.override-price`. Service memeriksa `request()->user()` lalu `Auth::user()`, sehingga aturan tetap berlaku di HTTP maupun test service.
+- Credit limit: setting `credit_limit_enforcement` (`off`, `warn`, `block`). Eksposur = AR outstanding + total SO approved lain + total SO saat ini. Limit `0` dianggap tanpa batas. Mode `warn` mengisi properti runtime `SalesOrder::$creditWarning` yang dikirim sebagai `credit_warning` pada respons create/approve; mode `block` melempar `422 CREDIT_LIMIT_EXCEEDED`.
+- SO otomatis `closed` saat seluruh `delivered_qty_base >= qty_base`; `closed_manually` mencegah disapprove DO membuka kembali SO yang ditutup pengguna.
+
+### Delivery Order dan HPP
+
+- DO hanya dari SO approved; qty dibatasi sisa SO dan stok tersedia.
+- Approve mengunci header DO -> periode -> header/baris SO -> saldo stok, lalu memanggil `StockService::issueWithValue()` per baris. Average cost saat keluar disimpan di `cogs_unit_cost_base`; nilai keluar disimpan di `total_cogs`.
+- Jurnal `Dr HPP per kategori item / Cr Persediaan per kategori item`. Kedua sisi memakai nilai yang sama dari ledger sehingga seimbang dan konsisten dengan `stock_balances`.
+- Disapprove membalik stok lewat `StockService::reverse()` dan membalik jurnal; ditolak bila periode closed, DO sudah ditagih, atau ada mutasi lanjutan.
+
+### Sales Invoice
+
+- Satu SI dapat menagih beberapa DO dari customer yang sama. Harga diambil dari `sales_order_items.unit_price` dan `unit_price_base` saat invoice dibuat.
+- Qty dibatasi sisa `delivery_order_items.qty_base - invoiced_qty_base`; approve menaikkan `invoiced_qty_base` pada DO dan SO.
+- `due_date = doc_date + customers.payment_term_days`.
+- Mode `draft`/`final`: draft dapat diubah dan belum berjurnal; final sudah diposting. Approve selalu mengubah mode menjadi final. Create dengan `mode=final` membuat draft lalu langsung approve.
+- Jurnal: `Dr Piutang Usaha` sebesar total, `Cr Penjualan per kategori` sebesar subtotal, `Cr PPN Keluaran` sebesar pajak.
+- Disapprove ditolak bila sudah ada pembayaran/alokasi; jika aman, jurnal dibalik dan `invoiced_qty_base` dikurangi.
+
+### Customer Payment
+
+- Alokasi parsial ke banyak invoice; total alokasi wajib sama dengan `amount`, dan setiap alokasi tidak boleh melebihi `total - paid_amount`.
+- `method=cash|bank`; akun dari `account_id` eksplisit atau `account_settings` (`cash_default`/`bank_default`).
+- Approve: lock payment -> periode -> invoice (urut id) -> jurnal `Dr Kas/Bank / Cr Piutang Usaha` -> naikkan `paid_amount`.
+- Disapprove membalik jurnal dan mengembalikan `paid_amount`.
+
+### Laporan dan cetak
+
+- **SO Outstanding**: SO approved dengan sisa dikirim/ditagih; nilai outstanding = sisa qty * `unit_price_base`.
+- **Sales Summary**: agregasi invoice approved per customer.
+- **AR Outstanding** dan **AR Aging**: invoice approved dengan `total > paid_amount`, hari keterlambatan dihitung dari due date dengan minimum 0.
+- **Income Statement**: pendapatan (kredit - debit), HPP dan beban (debit - kredit) dari jurnal posted/reversed; laba kotor = pendapatan - HPP, laba bersih = laba kotor - beban. Mengikuti ADR 0004 tanpa jurnal penutup.
+- **Cetak**: DomPDF untuk `sales.delivery-order` (Surat Jalan) dan `sales.sales-invoice` (Invoice). Nama berkas memakai `doc_no` yang disanitasi karena mengandung `/`.
+
+### Rekonsiliasi
+
+`ReconciliationService` otomatis memeriksa AR (`sales_invoices` approved) dan Persediaan (`stock_balances`) karena tabelnya sudah ada. Tutup periode gagal bila saldo GL Piutang/Persediaan tidak sama dengan sumber dokumen.
+
+### Asumsi
+
+- Sales Return belum diimplementasikan (opsional pada fase ini).
+- Override harga dicatat sebagai bagian dari audit SO, bukan tabel terpisah.
+- Credit limit memakai total SO approved sebagai eksposur komitmen, bukan hanya AR.
+
 ## Modul Persediaan (Fase 4)
 
 ```mermaid

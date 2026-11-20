@@ -35,9 +35,19 @@ use App\Domain\Purchasing\Models\PurchaseRequest;
 use App\Domain\Purchasing\Models\PurchaseRequestItem;
 use App\Domain\Purchasing\Models\SupplierPayment;
 use App\Domain\Purchasing\Models\SupplierPaymentAllocation;
+use App\Domain\Sales\Models\CustomerPayment;
+use App\Domain\Sales\Models\CustomerPaymentAllocation;
+use App\Domain\Sales\Models\DeliveryOrder;
+use App\Domain\Sales\Models\DeliveryOrderItem;
+use App\Domain\Sales\Models\SalesInvoice;
+use App\Domain\Sales\Models\SalesInvoiceItem;
+use App\Domain\Sales\Models\SalesOrder;
+use App\Domain\Sales\Models\SalesOrderItem;
 use App\Policies\AccountingPeriodPolicy;
 use App\Policies\AuditLogPolicy;
+use App\Policies\CustomerPaymentPolicy;
 use App\Policies\CustomerPolicy;
+use App\Policies\DeliveryOrderPolicy;
 use App\Policies\GoodsReceiptPolicy;
 use App\Policies\ItemCategoryPolicy;
 use App\Policies\ItemPolicy;
@@ -45,6 +55,8 @@ use App\Policies\JournalPolicy;
 use App\Policies\PurchaseInvoicePolicy;
 use App\Policies\PurchaseOrderPolicy;
 use App\Policies\PurchaseRequestPolicy;
+use App\Policies\SalesInvoicePolicy;
+use App\Policies\SalesOrderPolicy;
 use App\Policies\SellingPricePolicy;
 use App\Policies\StockOpnamePolicy;
 use App\Policies\SupplierPaymentPolicy;
@@ -111,6 +123,14 @@ class AppServiceProvider extends ServiceProvider
             'purchase_invoice_item' => PurchaseInvoiceItem::class,
             'supplier_payment' => SupplierPayment::class,
             'supplier_payment_allocation' => SupplierPaymentAllocation::class,
+            'sales_order' => SalesOrder::class,
+            'sales_order_item' => SalesOrderItem::class,
+            'delivery_order' => DeliveryOrder::class,
+            'delivery_order_item' => DeliveryOrderItem::class,
+            'sales_invoice' => SalesInvoice::class,
+            'sales_invoice_item' => SalesInvoiceItem::class,
+            'customer_payment' => CustomerPayment::class,
+            'customer_payment_allocation' => CustomerPaymentAllocation::class,
         ]);
 
         // Membantu menangkap N+1 query sejak fase pengembangan dan test.
@@ -150,6 +170,10 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(GoodsReceipt::class, GoodsReceiptPolicy::class);
         Gate::policy(PurchaseInvoice::class, PurchaseInvoicePolicy::class);
         Gate::policy(SupplierPayment::class, SupplierPaymentPolicy::class);
+        Gate::policy(SalesOrder::class, SalesOrderPolicy::class);
+        Gate::policy(DeliveryOrder::class, DeliveryOrderPolicy::class);
+        Gate::policy(SalesInvoice::class, SalesInvoicePolicy::class);
+        Gate::policy(CustomerPayment::class, CustomerPaymentPolicy::class);
 
         // Dokumentasi API sengaja terbuka untuk demo portofolio. Matikan lewat
         // API_DOCS_PUBLIC=false bila instance dipakai dengan data nyata.

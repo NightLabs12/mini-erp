@@ -82,7 +82,7 @@ final class PermissionRegistry
                 'supplier-payment' => self::PAYMENT,
             ],
             'sales' => [
-                'sales-order' => self::DOCUMENT,
+                'sales-order' => [...self::DOCUMENT, 'override-price'],
                 'delivery-order' => self::DOCUMENT,
                 'sales-invoice' => self::DOCUMENT,
                 'customer-payment' => self::PAYMENT,

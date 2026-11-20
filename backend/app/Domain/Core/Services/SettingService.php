@@ -49,6 +49,12 @@ final class SettingService
             'group' => 'inventory',
             'description' => 'Toleransi persen qty goods receipt melebihi sisa purchase order.',
         ],
+        'credit_limit_enforcement' => [
+            'value' => 'warn',
+            'type' => 'string',
+            'group' => 'sales',
+            'description' => 'Perilaku cek credit limit: off, warn, atau block.',
+        ],
         'require_no_draft_on_close' => [
             'value' => 'true',
             'type' => 'boolean',

@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
 use App\Http\Controllers\Api\V1\Auth\MeController;
 use App\Http\Controllers\Api\V1\CustomerController;
+use App\Http\Controllers\Api\V1\CustomerPaymentController;
+use App\Http\Controllers\Api\V1\DeliveryOrderController;
 use App\Http\Controllers\Api\V1\GoodsReceiptController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ItemCategoryController;
@@ -19,6 +21,8 @@ use App\Http\Controllers\Api\V1\PurchaseInvoiceController;
 use App\Http\Controllers\Api\V1\PurchaseOrderController;
 use App\Http\Controllers\Api\V1\PurchaseRequestController;
 use App\Http\Controllers\Api\V1\ReportController;
+use App\Http\Controllers\Api\V1\SalesInvoiceController;
+use App\Http\Controllers\Api\V1\SalesOrderController;
 use App\Http\Controllers\Api\V1\SellingPriceController;
 use App\Http\Controllers\Api\V1\StockBalanceController;
 use App\Http\Controllers\Api\V1\StockLedgerController;
@@ -154,6 +158,49 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('supplier-payments', SupplierPaymentController::class)
             ->parameters(['supplier-payments' => 'supplierPayment']);
 
+        // Sales: SO -> DO -> SI -> Payment In.
+        Route::get('sales-orders/{salesOrder}/audit', [SalesOrderController::class, 'audit'])
+            ->name('api.v1.sales-orders.audit');
+        Route::post('sales-orders/{salesOrder}/approve', [SalesOrderController::class, 'approve'])
+            ->name('api.v1.sales-orders.approve');
+        Route::post('sales-orders/{salesOrder}/disapprove', [SalesOrderController::class, 'disapprove'])
+            ->name('api.v1.sales-orders.disapprove');
+        Route::post('sales-orders/{salesOrder}/close', [SalesOrderController::class, 'close'])
+            ->name('api.v1.sales-orders.close');
+        Route::apiResource('sales-orders', SalesOrderController::class)
+            ->parameters(['sales-orders' => 'salesOrder']);
+
+        Route::get('delivery-orders/{deliveryOrder}/print', [DeliveryOrderController::class, 'print'])
+            ->name('api.v1.delivery-orders.print');
+        Route::get('delivery-orders/{deliveryOrder}/audit', [DeliveryOrderController::class, 'audit'])
+            ->name('api.v1.delivery-orders.audit');
+        Route::post('delivery-orders/{deliveryOrder}/approve', [DeliveryOrderController::class, 'approve'])
+            ->name('api.v1.delivery-orders.approve');
+        Route::post('delivery-orders/{deliveryOrder}/disapprove', [DeliveryOrderController::class, 'disapprove'])
+            ->name('api.v1.delivery-orders.disapprove');
+        Route::apiResource('delivery-orders', DeliveryOrderController::class)
+            ->parameters(['delivery-orders' => 'deliveryOrder']);
+
+        Route::get('sales-invoices/{salesInvoice}/print', [SalesInvoiceController::class, 'print'])
+            ->name('api.v1.sales-invoices.print');
+        Route::get('sales-invoices/{salesInvoice}/audit', [SalesInvoiceController::class, 'audit'])
+            ->name('api.v1.sales-invoices.audit');
+        Route::post('sales-invoices/{salesInvoice}/approve', [SalesInvoiceController::class, 'approve'])
+            ->name('api.v1.sales-invoices.approve');
+        Route::post('sales-invoices/{salesInvoice}/disapprove', [SalesInvoiceController::class, 'disapprove'])
+            ->name('api.v1.sales-invoices.disapprove');
+        Route::apiResource('sales-invoices', SalesInvoiceController::class)
+            ->parameters(['sales-invoices' => 'salesInvoice']);
+
+        Route::get('customer-payments/{customerPayment}/audit', [CustomerPaymentController::class, 'audit'])
+            ->name('api.v1.customer-payments.audit');
+        Route::post('customer-payments/{customerPayment}/approve', [CustomerPaymentController::class, 'approve'])
+            ->name('api.v1.customer-payments.approve');
+        Route::post('customer-payments/{customerPayment}/disapprove', [CustomerPaymentController::class, 'disapprove'])
+            ->name('api.v1.customer-payments.disapprove');
+        Route::apiResource('customer-payments', CustomerPaymentController::class)
+            ->parameters(['customer-payments' => 'customerPayment']);
+
         // Persediaan: saldo, ledger, transfer gudang, dan stock opname.
         Route::get('stock/balances', [StockBalanceController::class, 'index'])
             ->middleware('permission:inventory.stock.view')
@@ -217,5 +264,20 @@ Route::prefix('v1')->group(function (): void {
         Route::get('reports/ap-aging', [ReportController::class, 'apAging'])
             ->middleware('permission:report.ap-aging.view')
             ->name('api.v1.reports.ap-aging');
+        Route::get('reports/so-outstanding', [ReportController::class, 'soOutstanding'])
+            ->middleware('permission:report.so-outstanding.view')
+            ->name('api.v1.reports.so-outstanding');
+        Route::get('reports/sales-summary', [ReportController::class, 'salesSummary'])
+            ->middleware('permission:report.sales-summary.view')
+            ->name('api.v1.reports.sales-summary');
+        Route::get('reports/ar-outstanding', [ReportController::class, 'arOutstanding'])
+            ->middleware('permission:report.ar-outstanding.view')
+            ->name('api.v1.reports.ar-outstanding');
+        Route::get('reports/ar-aging', [ReportController::class, 'arAging'])
+            ->middleware('permission:report.ar-aging.view')
+            ->name('api.v1.reports.ar-aging');
+        Route::get('reports/income-statement', [ReportController::class, 'incomeStatement'])
+            ->middleware('permission:report.income-statement.view')
+            ->name('api.v1.reports.income-statement');
     });
 });

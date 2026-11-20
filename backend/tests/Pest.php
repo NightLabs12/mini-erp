@@ -12,6 +12,9 @@ use App\Domain\Master\Models\ItemUnitConversion;
 use App\Domain\Master\Models\Unit;
 use App\Domain\Purchasing\Models\PurchaseInvoice;
 use App\Domain\Purchasing\Models\PurchaseOrder;
+use App\Domain\Sales\Models\DeliveryOrder;
+use App\Domain\Sales\Models\SalesInvoice;
+use App\Domain\Sales\Models\SalesOrder;
 use App\Support\Math\Decimal;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -242,4 +245,68 @@ function purchasingJournalLine(Journal $journal, string $accountCode): App\Domai
     $accountId = accountByCode($accountCode)->getKey();
 
     return $journal->lines()->where('account_id', $accountId)->firstOrFail();
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function salesOrder(array $overrides = []): SalesOrder
+{
+    return test()->salesOrders->create([
+        'doc_date' => test()->date,
+        'customer_id' => test()->customer->getKey(),
+        'warehouse_id' => test()->warehouse->getKey(),
+        'notes' => 'SO uji',
+        'items' => [
+            [
+                'item_id' => test()->item->getKey(),
+                'unit_id' => test()->dus->getKey(),
+                'qty' => '5',
+                'discount_pct' => '0',
+            ],
+        ],
+        ...$overrides,
+    ]);
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function salesDelivery(SalesOrder $order, array $overrides = []): DeliveryOrder
+{
+    $orderItem = $order->items()->firstOrFail();
+
+    return test()->deliveries->create([
+        'doc_date' => test()->date,
+        'sales_order_id' => $order->getKey(),
+        'notes' => 'DO uji',
+        'items' => [
+            [
+                'sales_order_item_id' => $orderItem->getKey(),
+                'qty' => (string) $orderItem->qty,
+            ],
+        ],
+        ...$overrides,
+    ]);
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function salesInvoice(DeliveryOrder $delivery, array $overrides = []): SalesInvoice
+{
+    $deliveryItem = $delivery->items()->firstOrFail();
+
+    return test()->salesInvoices->create([
+        'doc_date' => test()->date,
+        'customer_id' => $delivery->customer_id,
+        'notes' => 'SI uji',
+        'items' => [
+            [
+                'delivery_order_item_id' => $deliveryItem->getKey(),
+                'qty' => (string) $deliveryItem->qty,
+            ],
+        ],
+        ...$overrides,
+    ]);
 }
