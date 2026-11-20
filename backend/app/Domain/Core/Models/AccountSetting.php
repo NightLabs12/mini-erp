@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Domain\Core\Models;
 
+use App\Domain\Accounting\Models\Account;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Pemetaan key akun ke akun COA. Baris diisi pada Fase 2 bersama tabel accounts.
+ * Pemetaan key akun ke akun COA. Sumber tunggal AccountMapper, bukan hardcode
+ * kode akun di service dokumen.
  *
  * @property int $id
  * @property string $key
@@ -27,5 +30,11 @@ class AccountSetting extends Model
         return [
             'account_id' => 'integer',
         ];
+    }
+
+    /** @return BelongsTo<Account, $this> */
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class);
     }
 }

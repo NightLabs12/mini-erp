@@ -184,7 +184,45 @@ Penghapusan ditolak `409 MASTER_IN_USE` bila data masih direferensikan:
 | Supplier | dokumen pembelian |
 | Customer | dokumen penjualan dan harga khusus |
 
-Tabel dokumen yang belum ada pada fase ini otomatis dilewati, dan ikut diperiksa begitu tabelnya dibuat.
+Tabel dokumen yang belum ada pada fase ini otomatis dilewati, dan ikut diperiksa begitu tabelnya dibuat. Perubahan `base_unit_id` atau `factor_to_base` pada item yang sudah dipakai dokumen ditolak `409 ITEM_IN_USE`.
+
+Presisi satuan ada di `units.decimal_places` (0-4). `UnitConversionService` menolak qty yang melebihi presisi satuan base atau menghasilkan `qty_base` pecahan pada satuan bulat dengan `422 QTY_PRECISION_INVALID`. Contoh: 0,5 PCS ditolak, 0,5 DUS x 144 = 72 PCS diterima.
+
+Rentang `selling_prices` untuk kombinasi item, satuan, dan customer yang sama tidak boleh tumpang tindih (`422 PRICE_PERIOD_OVERLAP`). Batas `valid_from`/`valid_to` inklusif; null berarti terbuka tanpa batas.
+
+## Akuntansi
+
+| Metode | Path | Permission |
+| --- | --- | --- |
+| GET/POST | `/journals` | `accounting.journal.view` / `accounting.journal.create` |
+| GET/PUT/DELETE | `/journals/{id}` | `accounting.journal.view` / `update` / `delete` |
+| POST | `/journals/{id}/approve` | `accounting.journal.approve` |
+| POST | `/journals/{id}/reverse` | `accounting.journal.reverse` |
+| GET | `/journals/{id}/audit` | `accounting.journal.view` |
+| GET | `/accounting-periods` | `accounting.period.view` |
+| POST | `/accounting-periods/{id}/close` | `accounting.period.close` |
+| POST | `/accounting-periods/{id}/reopen` | `accounting.period.reopen` + role admin |
+| GET | `/reports/general-ledger` | `report.general-ledger.view` |
+| GET | `/reports/trial-balance` | `report.trial-balance.view` |
+
+Jurnal manual dibuat sebagai `draft` tanpa nomor. Approve memvalidasi keseimbangan dan periode open, lalu memberi nomor `JV/YYYY/MM/0000`. Reverse membuat jurnal baru dengan debit/credit ditukar dan menandai jurnal asal `reversed`.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/journals \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "journal_date": "2026-11-20",
+    "description": "Setoran modal",
+    "lines": [
+      {"account_id": 4, "debit": "1000000.00"},
+      {"account_id": 30, "credit": "1000000.00"}
+    ]
+  }'
+```
+
+Tutup periode memvalidasi: periode sebelumnya closed, seluruh jurnal seimbang, tidak ada draft (bila setting aktif), dan rekonsiliasi. Gagal menghasilkan `409 PERIOD_CLOSE_FAILED` dengan `errors.reasons`. Posting ke periode closed menghasilkan `422 PERIOD_CLOSED`.
+
+Laporan menerima `?from=YYYY-MM-DD&to=YYYY-MM-DD`; General Ledger juga menerima `?account_id=`. Default-nya bulan berjalan.
 
 ## Kode error
 
@@ -199,9 +237,23 @@ Tabel dokumen yang belum ada pada fase ini otomatis dilewati, dan ikut diperiksa
 | `RATE_LIMITED` | 429 | Melewati batas request |
 | `DEMO_MODE_READONLY` | 403 | Perubahan data kritis saat `DEMO_MODE=true` |
 | `MASTER_IN_USE` | 409 | Master masih direferensikan data lain |
+| `ITEM_IN_USE` | 409 | Satuan base/faktor item diubah padahal sudah dipakai dokumen |
 | `UNIT_NOT_CONVERTIBLE` | 422 | Satuan tidak terdefinisi untuk item |
+| `QTY_PRECISION_INVALID` | 422 | Qty melebihi presisi satuan atau qty_base pecahan pada satuan bulat |
 | `CONVERSION_NOT_FOUND` | 404 | Konversi bukan milik item tersebut |
 | `SELLING_PRICE_NOT_FOUND` | 404 | Tidak ada harga jual yang berlaku |
+| `PRICE_PERIOD_OVERLAP` | 422 | Rentang harga tumpang tindih |
+| `JOURNAL_NOT_BALANCED` | 422 | Debit dan credit jurnal tidak sama |
+| `JOURNAL_LINE_INVALID` | 422 | Baris jurnal tidak valid (debit/credit ganda, negatif, nol) |
+| `ACCOUNT_NOT_POSTABLE` | 422 | Akun induk/nonaktif dipakai jurnal |
+| `ACCOUNT_MAPPING_MISSING` | 422 | Key account_settings belum punya akun |
+| `JOURNAL_NOT_DRAFT` | 409 | Aksi draft dilakukan pada jurnal posted/reversed |
+| `JOURNAL_NOT_REVERSIBLE` | 409 | Reverse dilakukan pada jurnal yang bukan posted |
+| `PERIOD_NOT_FOUND` | 422 | Belum ada baris periode untuk tanggal tersebut |
+| `PERIOD_CLOSED` | 422 | Posting ke periode closed |
+| `PERIOD_CLOSE_FAILED` | 409 | Validasi tutup periode gagal |
+| `PERIOD_ALREADY_CLOSED` / `PERIOD_ALREADY_OPEN` | 409 | Status periode sudah sesuai aksi |
+| `PERIOD_LATER_CLOSED` | 409 | Reopen periode yang diikuti periode closed |
 | `LAST_ADMIN` | 409 | Mencabut atau menonaktifkan admin aktif terakhir |
 | `UNKNOWN_DOC_TYPE` | 422 | Prefix dokumen tidak dikenal |
 | `SERVER_ERROR` | 500 | Kesalahan tak terduga |

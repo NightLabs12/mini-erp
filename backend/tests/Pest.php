@@ -2,11 +2,15 @@
 
 declare(strict_types=1);
 
+use App\Domain\Accounting\Models\Account;
+use App\Domain\Accounting\Models\AccountingPeriod;
+use App\Domain\Accounting\Models\Journal;
 use App\Domain\Core\Models\User;
 use App\Domain\Master\Models\Item;
 use App\Domain\Master\Models\ItemCategory;
 use App\Domain\Master\Models\ItemUnitConversion;
 use App\Domain\Master\Models\Unit;
+use App\Support\Math\Decimal;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -101,4 +105,64 @@ function addConversion(Item $item, Unit $unit, string $factor, bool $purchase = 
     ]);
 
     return $conversion;
+}
+
+/**
+ * Akun COA berdasarkan kode, misalnya 1-1100.
+ */
+function accountByCode(string $code): Account
+{
+    /** @var Account $account */
+    $account = Account::query()->where('code', $code)->firstOrFail();
+
+    return $account;
+}
+
+/**
+ * Periode uji; status dapat dipaksa untuk skenario posting ke periode closed.
+ */
+function accountingPeriod(int $year, int $month, string $status = AccountingPeriod::STATUS_OPEN): AccountingPeriod
+{
+    /** @var AccountingPeriod $period */
+    $period = AccountingPeriod::query()->firstOrCreate(
+        ['year' => $year, 'month' => $month],
+        ['status' => $status],
+    );
+
+    if ($period->status !== $status) {
+        $period->update(['status' => $status]);
+    }
+
+    return $period->refresh();
+}
+
+/**
+ * Dua baris jurnal sederhana: debit satu akun, credit akun lain.
+ *
+ * @return list<array{account_id: int, debit?: string, credit?: string}>
+ */
+function journalLines(string $debitCode, string $creditCode, string $amount): array
+{
+    return [
+        ['account_id' => accountByCode($debitCode)->getKey(), 'debit' => $amount],
+        ['account_id' => accountByCode($creditCode)->getKey(), 'credit' => $amount],
+    ];
+}
+
+/**
+ * Memastikan total baris dan total header jurnal seimbang.
+ */
+function assertJournalBalanced(Journal $journal): void
+{
+    $debit = '0.00';
+    $credit = '0.00';
+
+    foreach ($journal->lines()->get() as $line) {
+        $debit = Decimal::add($debit, (string) $line->debit, Decimal::MONEY_SCALE);
+        $credit = Decimal::add($credit, (string) $line->credit, Decimal::MONEY_SCALE);
+    }
+
+    expect(Decimal::compare($debit, $credit, Decimal::MONEY_SCALE))->toBe(0)
+        ->and(Decimal::compare($debit, (string) $journal->total_debit, Decimal::MONEY_SCALE))->toBe(0)
+        ->and(Decimal::compare($credit, (string) $journal->total_credit, Decimal::MONEY_SCALE))->toBe(0);
 }

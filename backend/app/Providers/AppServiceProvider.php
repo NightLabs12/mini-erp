@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domain\Accounting\Models\Account;
+use App\Domain\Accounting\Models\AccountingPeriod;
+use App\Domain\Accounting\Models\Journal;
+use App\Domain\Accounting\Models\JournalLine;
 use App\Domain\Core\Models\AuditLog;
 use App\Domain\Core\Models\User;
 use App\Domain\Core\Services\SettingService;
@@ -15,10 +19,12 @@ use App\Domain\Master\Models\SellingPrice;
 use App\Domain\Master\Models\Supplier;
 use App\Domain\Master\Models\Unit;
 use App\Domain\Master\Models\Warehouse;
+use App\Policies\AccountingPeriodPolicy;
 use App\Policies\AuditLogPolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\ItemCategoryPolicy;
 use App\Policies\ItemPolicy;
+use App\Policies\JournalPolicy;
 use App\Policies\SellingPricePolicy;
 use App\Policies\SupplierPolicy;
 use App\Policies\UnitPolicy;
@@ -62,6 +68,10 @@ class AppServiceProvider extends ServiceProvider
             'supplier' => Supplier::class,
             'customer' => Customer::class,
             'selling_price' => SellingPrice::class,
+            'account' => Account::class,
+            'accounting_period' => AccountingPeriod::class,
+            'journal' => Journal::class,
+            'journal_line' => JournalLine::class,
         ]);
 
         // Membantu menangkap N+1 query sejak fase pengembangan dan test.
@@ -92,6 +102,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Supplier::class, SupplierPolicy::class);
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(SellingPrice::class, SellingPricePolicy::class);
+        Gate::policy(Journal::class, JournalPolicy::class);
+        Gate::policy(AccountingPeriod::class, AccountingPeriodPolicy::class);
 
         // Dokumentasi API sengaja terbuka untuk demo portofolio. Matikan lewat
         // API_DOCS_PUBLIC=false bila instance dipakai dengan data nyata.

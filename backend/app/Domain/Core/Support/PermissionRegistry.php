@@ -93,7 +93,7 @@ final class PermissionRegistry
                 'stock' => ['view', 'export'],
             ],
             'accounting' => [
-                'journal' => ['view', 'create', 'update', 'delete', 'print', 'export'],
+                'journal' => ['view', 'create', 'update', 'delete', 'approve', 'reverse', 'print', 'export'],
                 'period' => ['view', 'close', 'reopen'],
             ],
             'report' => $reports,

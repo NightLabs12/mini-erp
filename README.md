@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 2 selesai: Master data (units, kategori, item, konversi satuan, gudang, supplier, customer, harga jual).**
+**Fase 3 selesai: Mesin akuntansi (COA, periode, jurnal double-entry, jurnal manual, General Ledger, Trial Balance).**
 
 | Area | Kondisi |
 | --- | --- |
@@ -14,19 +14,21 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Infra | `docker-compose.yml` (php-fpm, nginx, postgres 16, node), Makefile, GitHub Actions |
 | Auth | Sanctum bearer token, login/logout/me, token expiry, rate limit login per email + IP |
 | Keamanan token | User nonaktif (`is_active=false`) ditolak `403 USER_INACTIVE`, user terhapus `401`; ganti password dan nonaktifkan akun mencabut token |
-| RBAC | 6 role, 172 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
+| RBAC | 6 role, 174 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
 | Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /{resource}/{id}/audit` untuk user dan seluruh master |
 | Penomoran | `DocumentSequenceService` mengikuti `doc_date`, reset per bulan, tanpa celah saat rollback, teruji 50 proses paralel |
 | Master data | 8 resource CRUD dengan pagination, filter, sort, search, soft delete, dan proteksi hapus saat masih dipakai |
-| Konversi satuan | `UnitConversionService`: Pcs/Pack/Dus, biaya per satuan base, presisi 4 desimal |
-| Harga jual | `GET /selling-prices/lookup` dengan prioritas harga khusus customer, lalu harga umum |
+| Konversi satuan | `UnitConversionService`: Pcs/Pack/Dus/Meter/Kg, presisi per satuan, biaya per satuan base |
+| Harga jual | `GET /selling-prices/lookup` dengan prioritas harga khusus customer, anti-overlap periode |
+| Akuntansi | COA ~50 akun, 12 periode, jurnal manual draft/approve/reverse, constraint keseimbangan di database |
+| Laporan awal | General Ledger (CTE + window function) dan Trial Balance, parameter binding |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
-| Settings | `settings` bertipe dengan nilai default aman, `account_settings` disiapkan untuk Fase Accounting |
+| Settings | `settings` bertipe dengan nilai default aman; `account_settings` terisi 15 pemetaan akun |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (141 test), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (184 test + 1 placeholder), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Purchasing, Sales, Inventory, Accounting, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Purchasing, Sales, Inventory, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -282,7 +284,7 @@ CI menjalankan Pint, Larastan, Pest (service PostgreSQL 16), ESLint, typecheck, 
 - **Bearer token Sanctum, bukan cookie SPA.** Tidak butuh CSRF dan konfigurasi domain lintas origin untuk demo publik.
 - **PostgreSQL di semua lingkungan, termasuk test.** Trigger append-only, constraint CHECK, dan `FOR UPDATE` tidak bisa diuji di SQLite.
 - **`ListQuery` terpusat.** Satu perilaku list endpoint untuk seluruh modul, tanpa merakit SQL dari input pengguna.
-- **bcmath dan brick/math.** Keduanya tersedia, dengan helper uang dibangun di fase Accounting.
+- **bcmath dan brick/math.** `App\Support\Math\Decimal` menjadi satu-satunya jalur aritmetika uang; float tidak dipakai di service jurnal maupun laporan.
 - **Platform Composer dipin ke PHP 8.3.** `config.platform.php = 8.3.0` di `backend/composer.json` membuat `composer.lock` selalu berisi paket yang kompatibel dengan PHP 8.3, meskipun lock dibuat di mesin dengan PHP 8.4. Tanpa pin ini, Symfony 8.x ikut terpasang dan CI (PHP 8.3) gagal saat `composer install`.
 - **Image mandiri, bind mount hanya untuk lokal.** `docker/php/Dockerfile` membangun image berisi kode dan `vendor`; `docker-compose.override.yml` menambahkan bind mount untuk hot reload. CI menguji image tanpa override, sehingga Dockerfile benar-benar terbukti bisa jalan sendiri.
 - **Pengembangan native sebagai jalur utama.** Siklus ubah-jalan lebih cepat tanpa rebuild image; Docker dipakai untuk demo dan diverifikasi CI.

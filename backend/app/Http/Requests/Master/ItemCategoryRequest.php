@@ -34,9 +34,24 @@ final class ItemCategoryRequest extends FormRequest
             ],
             'name' => [$required, 'string', 'max:80'],
             'item_type' => [$required, Rule::in(ItemCategory::TYPES)],
-            'inventory_account_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
-            'cogs_account_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
-            'sales_account_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'inventory_account_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('accounts', 'id')->where('is_postable', true)->where('is_active', true),
+            ],
+            'cogs_account_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('accounts', 'id')->where('is_postable', true)->where('is_active', true),
+            ],
+            'sales_account_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('accounts', 'id')->where('is_postable', true)->where('is_active', true),
+            ],
         ];
     }
 

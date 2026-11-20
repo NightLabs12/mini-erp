@@ -208,12 +208,15 @@ Delapan resource CRUD memakai pola seragam: FormRequest, Policy per model, API R
 - `SellingPriceResolver` memilih baris dengan urutan: harga khusus customer dulu (`customer_id IS NOT NULL`), lalu `valid_from` terbaru, lalu `id` terbesar.
 - `valid_from`/`valid_to` null berarti tanpa batas. Tanggal lookup default hari ini, dan bisa dikirim eksplisit lewat `?date=`.
 - Endpoint lookup mengembalikan `unit_price_base` hasil `UnitConversionService`, sehingga frontend tidak menghitung ulang.
+- `SellingPricePeriodGuard` menolak rentang tumpang tindih untuk kombinasi (item, satuan, customer) yang sama dengan `422 PRICE_PERIOD_OVERLAP`. Batas tanggal inklusif. Constraint `EXCLUDE USING gist` pada `daterange` menjadi jaring pengaman untuk request paralel.
+- `unitPriceFromBase()` selalu membulatkan 2 desimal HALF_UP karena hasilnya harga uang, bukan qty.
 
 ### Proteksi penghapusan
 
-- `MasterUsageGuard` membaca `config/master_usage.php`: daftar pasangan tabel dan kolom per model.
+- `MasterUsageGuard` membaca `config/master_usage.php`: daftar pasangan tabel dan kolom per model, plus `document_tables`.
 - Tabel yang belum ada dilewati (`Schema::hasTable`), sehingga modul Purchasing dan Sales cukup menambah entri konfigurasi tanpa mengubah guard.
 - Penghapusan yang masih dipakai menghasilkan `409 MASTER_IN_USE` beserta daftar tabel di `errors.references`.
+- Perubahan `items.base_unit_id` atau `factor_to_base` pada item yang sudah dipakai tabel dokumen ditolak `409 ITEM_IN_USE`. Mekanisme aktif otomatis begitu tabel dokumen dibuat; test placeholder menandai tabel yang belum ada secara eksplisit.
 
 ### Audit dan morph map
 
@@ -225,7 +228,67 @@ Delapan resource CRUD memakai pola seragam: FormRequest, Policy per model, API R
 
 - Nilai default didefinisikan di `SettingService::DEFAULTS`, bukan hanya di seeder, sehingga instalasi baru dan test berperilaku sama.
 - Akses bertipe: `bool()`, `int()`, `decimal()`, `get()` dengan fallback.
-- `account_settings` sudah ada tetapi belum berisi baris; pemetaan akun diisi pada Fase 2 bersama tabel `accounts`.
+- `account_settings` diisi `AccountingSeeder` dengan 15 key akun (persediaan per jenis, GR/IR, AP/AR, PPN, penjualan, HPP, kas/bank, dan variance).
+
+## Modul Akuntansi (Fase 3)
+
+```mermaid
+flowchart LR
+    Doc["Dokumen / jurnal manual"] --> JS["JournalService"]
+    JS --> PG["PeriodGuard"]
+    JS --> DS["DocumentSequenceService (JV)"]
+    JS --> J["journals"]
+    J --> JL["journal_lines"]
+    JL --> A["accounts"]
+    AS["account_settings"] --> AM["AccountMapper"]
+    AM --> Doc
+    JL --> GL["GeneralLedgerService"]
+    JL --> TB["TrialBalanceService"]
+```
+
+### Skema dan integritas
+
+- `accounts` bertingkat lewat `parent_id`/`level`; akun induk `is_postable=false` tidak boleh dipakai jurnal.
+- `journal_lines` memiliki CHECK `debit >= 0 AND credit >= 0 AND NOT (debit > 0 AND credit > 0)`.
+- Constraint trigger deferred memastikan jurnal posted/reversed seimbang di database. Draft manual boleh tidak seimbang agar pengguna dapat menyimpan pekerjaan, tetapi approve tetap ditolak `422 JOURNAL_NOT_BALANCED`.
+- FK `item_categories.*_account_id` dan `account_settings.account_id` ditambahkan setelah tabel `accounts` ada, dengan `restrictOnDelete`.
+- Semua model baru (`Account`, `AccountingPeriod`, `Journal`, `JournalLine`) terdaftar di morph map sejak awal.
+
+### Alur jurnal
+
+- `JournalService::post()` membuat jurnal posted, nomor `JV/YYYY/MM/0000`, baris, dan audit dalam satu `DB::transaction`.
+- Jurnal manual dibuat draft tanpa nomor. Nomor diberikan saat approve agar mengikuti tanggal final.
+- `reverse()` membuat jurnal baru dengan debit/credit ditukar, lalu menandai jurnal asal `reversed`. Kedua jurnal tetap ada.
+- `PeriodGuard::assertOpen()` dipakai semua operasi posting. Periode closed menghasilkan `422 PERIOD_CLOSED`.
+- Tutup periode memvalidasi periode sebelumnya, keseimbangan seluruh jurnal, dokumen draft, dan rekonsiliasi. Gagal mengembalikan daftar penyebab di `errors.reasons`.
+- Reopen hanya untuk role admin dan tercatat sebagai `period_reopened`.
+
+### Laporan
+
+- General Ledger memakai CTE `opening`/`period` dan window function `SUM(...) OVER (PARTITION BY account_id ORDER BY journal_date, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`.
+- Trial Balance menghitung saldo awal, mutasi, dan saldo akhir; total debit/kredit harus sama.
+- Semua parameter laporan memakai binding; tidak ada nilai tanggal atau id yang dirangkai ke SQL.
+- Laba tahun berjalan dihitung dinamis di laporan, tanpa jurnal penutup tahunan. Lihat [ADR 0004](ADR/0004-laba-tahun-berjalan-dinamis.md).
+
+### EXPLAIN ANALYZE General Ledger
+
+Dataset uji: 5.000 jurnal posted, 10.000 baris, satu akun kas, rentang Desember 2026, PostgreSQL 16 lokal.
+
+```
+WindowAgg  (actual time=4.684..4.915 rows=338 loops=1)
+  Buffers: shared hit=305
+  ->  Sort  (Sort Key: jl.journal_date, jl.id)  (actual time=4.675..4.686 rows=338)
+        ->  Nested Loop Left Join  (actual time=3.627..4.568 rows=338)
+              ->  Index Scan using accounts_pkey on accounts a  (actual time=0.009..0.009 rows=1)
+              ->  Bitmap Heap Scan on journal_lines jl  (actual time=0.027..0.075 rows=338)
+                    Recheck Cond: ((account_id = '4') AND (journal_date >= '2026-12-01') AND (journal_date <= '2026-12-31'))
+                    ->  Bitmap Index Scan on journal_lines_account_date_idx  (actual time=0.023..0.023 rows=338)
+                          Index Cond: ((account_id = '4') AND (journal_date >= '2026-12-01') AND (journal_date <= '2026-12-31'))
+Planning Time: 4.675 ms
+Execution Time: 5.196 ms
+```
+
+Catatan: CTE `opening` memilih 46% baris (sebelum Desember), sehingga planner memakai seq scan + hash join; itu pilihan yang benar untuk selektivitas tersebut. Slice periode (338 baris) memakai `journal_lines_account_date_idx`. Untuk akun dengan riwayat panjang dan rentang sempit, index yang sama dipakai langsung.
 
 ## Keamanan
 

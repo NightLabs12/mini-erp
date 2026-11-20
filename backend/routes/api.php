@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\AccountingPeriodController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
@@ -11,6 +12,8 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ItemCategoryController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\ItemUnitConversionController;
+use App\Http\Controllers\Api\V1\JournalController;
+use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SellingPriceController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\UnitController;
@@ -75,5 +78,30 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.selling-prices.audit');
         Route::apiResource('selling-prices', SellingPriceController::class)
             ->parameters(['selling-prices' => 'sellingPrice']);
+
+        // Akuntansi: jurnal manual dan periode.
+        Route::get('journals/{journal}/audit', [JournalController::class, 'audit'])->name('api.v1.journals.audit');
+        Route::post('journals/{journal}/approve', [JournalController::class, 'approve'])
+            ->name('api.v1.journals.approve');
+        Route::post('journals/{journal}/reverse', [JournalController::class, 'reverse'])
+            ->name('api.v1.journals.reverse');
+        Route::apiResource('journals', JournalController::class);
+
+        Route::get('accounting-periods', [AccountingPeriodController::class, 'index'])
+            ->name('api.v1.accounting-periods.index');
+        Route::get('accounting-periods/{accountingPeriod}', [AccountingPeriodController::class, 'show'])
+            ->name('api.v1.accounting-periods.show');
+        Route::post('accounting-periods/{accountingPeriod}/close', [AccountingPeriodController::class, 'close'])
+            ->name('api.v1.accounting-periods.close');
+        Route::post('accounting-periods/{accountingPeriod}/reopen', [AccountingPeriodController::class, 'reopen'])
+            ->name('api.v1.accounting-periods.reopen');
+
+        // Laporan awal. Parameter binding dan validasi tanggal ada di service/request.
+        Route::get('reports/general-ledger', [ReportController::class, 'generalLedger'])
+            ->middleware('permission:report.general-ledger.view')
+            ->name('api.v1.reports.general-ledger');
+        Route::get('reports/trial-balance', [ReportController::class, 'trialBalance'])
+            ->middleware('permission:report.trial-balance.view')
+            ->name('api.v1.reports.trial-balance');
     });
 });
