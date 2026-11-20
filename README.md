@@ -281,6 +281,56 @@ Di Docker, `mini_erp_test` dibuat otomatis oleh `docker/postgres/init`. Untuk pe
 
 CI menjalankan Pint, Larastan, Pest (service PostgreSQL 16), ESLint, typecheck, build frontend, dan job `docker-smoke` untuk stack Compose.
 
+## Backup dan restore
+
+Yang tidak bisa dibuat ulang dari git: isi database, `.env` di root (nama proyek Compose dan port), `backend/.env` (berisi `APP_KEY`), dan berkas upload di `backend/storage/app`.
+
+```bash
+make backup        # sama dengan ./scripts/backup.sh
+```
+
+Hasilnya di `~/backups`:
+
+| Berkas | Isi |
+| --- | --- |
+| `db_YYYY-MM-DD_HHMM.dump` | `pg_dump -Fc`, sudah terkompresi |
+| `files_YYYY-MM-DD_HHMM.tar.gz` | `.env`, `backend/.env`, `storage/app`, `docker-compose*.yml`, `docker/` |
+
+Script membaca `COMPOSE_PROJECT_NAME` dari `.env` lalu memanggil `docker compose -p <nama>`. Tanpa itu, `docker compose` menebak nama proyek dari nama direktori dan tidak menemukan container `minierp-dev`, terutama saat dijalankan dari cron.
+
+Dump diperiksa magic bytes `PGDMP` sebelum disimpan, jadi kegagalan `docker compose` tidak meninggalkan berkas 0 byte yang terlihat seperti backup. Rotasi default 7 hari, bisa diubah lewat `RETENTION_DAYS`.
+
+Menarik ke laptop, dijalankan dari Windows:
+
+```powershell
+.\scripts\pull-backup.ps1 -Host 172.232.245.132 -User dev
+```
+
+Menguji bahwa backup benar-benar bisa dipulihkan, tanpa menyentuh database asli. Perhatikan `-p minierp-dev`, karena nama proyek Compose berbeda dari nama direktori:
+
+```bash
+C="docker compose -p minierp-dev"
+
+$C exec -T postgres sh -c \
+  'psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE mini_erp_verify"'
+$C exec -T postgres sh -c \
+  'pg_restore -U "$POSTGRES_USER" -d mini_erp_verify --no-owner' \
+  < ~/backups/db_YYYY-MM-DD_HHMM.dump
+$C exec -T postgres psql -U mini_erp -d mini_erp_verify -c '\dt'
+$C exec -T postgres sh -c \
+  'psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE mini_erp_verify"'
+```
+
+Bandingkan `select count(*)` pada beberapa tabel antara `mini_erp` dan `mini_erp_verify`. Angka yang sama berarti restore berhasil, bukan sekadar skema kosong.
+
+Menjalankan harian lewat cron jam 2 pagi:
+
+```cron
+0 2 * * * /home/dev/work/mini-erp/scripts/backup.sh >> /home/dev/work/backup.log 2>&1
+```
+
+Backup yang hanya ada di VPS dan laptop tetap bisa hilang bersamaan. Salin `~/backups` ke penyimpanan lain dengan `rclone`, atau pakai `restic` yang sekaligus mengenkripsi. Arsip `files_*` memuat password database dan `APP_KEY` dalam teks biasa, jadi jangan ditaruh di folder yang tersinkron ke cloud tanpa enkripsi.
+
 ## Keputusan awal
 
 - **React, bukan Blade.** Grid editable multi-baris dengan navigasi keyboard lebih terkendali di React, dan kontrak JSON memudahkan pengujian API.

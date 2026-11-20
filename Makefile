@@ -19,7 +19,7 @@ NODE_INSTALL := if [ ! -d node_modules/eslint ]; then npm ci --no-audit --no-fun
 
 .DEFAULT_GOAL := help
 
-.PHONY: help demo up down build install migrate seed demo-reset test lint lint-php pint stan \
+.PHONY: help demo up down build install migrate seed demo-reset backup test lint lint-php pint stan \
 	fe-up fe-lint fe-typecheck fe-build logs sh psql smoke
 
 help:
@@ -31,6 +31,7 @@ help:
 	@echo "  make migrate     Jalankan migrasi database"
 	@echo "  make seed        Isi database dengan data demo"
 	@echo "  make demo-reset  Bangun ulang dataset demo dari nol"
+	@echo "  make backup      Dump database dan arsipkan berkas di luar git ke ~/backups"
 	@echo "  make test        Jalankan seluruh test backend di container"
 	@echo "  make lint        Pint --test, Larastan, ESLint, dan typecheck"
 	@echo "  make pint        Perbaiki format kode PHP"
@@ -71,6 +72,9 @@ seed:
 
 demo-reset:
 	$(NICE) $(COMPOSE) exec -T app php artisan demo:reset --force
+
+backup:
+	./scripts/backup.sh
 
 test:
 	$(NICE) $(COMPOSE) exec -T app nice -n 10 ./vendor/bin/pest
