@@ -61,6 +61,7 @@ fi
 db_file="$BACKUP_DIR/db_$STAMP.dump"
 mv "$tmp_dump" "$db_file"
 trap - EXIT
+chmod 600 "$db_file"
 log "Database: $db_file ($(du -h "$db_file" | cut -f1))"
 
 # --- Berkas di luar git -------------------------------------------------------
@@ -77,6 +78,9 @@ if [ ${#files[@]} -eq 0 ]; then
 else
   files_file="$BACKUP_DIR/files_$STAMP.tar.gz"
   tar -czf "$files_file" "${files[@]}"
+  # Arsip memuat .env dengan DB_PASSWORD dan APP_KEY. Tanpa chmod, umask 002
+  # di VPS bersama membuatnya terbaca user lain.
+  chmod 600 "$files_file"
   log "Berkas: $files_file ($(du -h "$files_file" | cut -f1))"
   log "Isi: ${files[*]}"
 fi
