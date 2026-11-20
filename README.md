@@ -303,8 +303,10 @@ Dump diperiksa magic bytes `PGDMP` sebelum disimpan, jadi kegagalan `docker comp
 Menarik ke laptop, dijalankan dari Windows:
 
 ```powershell
-.\scripts\pull-backup.ps1 -Host 172.232.245.132 -User dev
+.\scripts\pull-backup.ps1 -Server 172.232.245.132 -User dev
 ```
+
+Parameternya `-Server`, bukan `-Host`: `$Host` adalah automatic variable PowerShell yang read-only, jadi parameter bernama `Host` selalu gagal dengan "Cannot overwrite variable Host". Script melewati berkas yang sudah ada, membandingkan ukuran dengan sisi remote, dan mencetak SHA256 tiap berkas.
 
 Menguji bahwa backup benar-benar bisa dipulihkan, tanpa menyentuh database asli. Perhatikan `-p minierp-dev`, karena nama proyek Compose berbeda dari nama direktori:
 
