@@ -41,8 +41,6 @@ it('menandai tabel referensi yang belum ada sebagai pending secara eksplisit', f
         'sales_order_items',
         'goods_receipt_items',
         'delivery_order_items',
-        'stock_ledger',
-        'stock_balances',
         'purchase_orders',
         'sales_orders',
         'goods_receipts',

@@ -290,6 +290,73 @@ Execution Time: 5.196 ms
 
 Catatan: CTE `opening` memilih 46% baris (sebelum Desember), sehingga planner memakai seq scan + hash join; itu pilihan yang benar untuk selektivitas tersebut. Slice periode (338 baris) memakai `journal_lines_account_date_idx`. Untuk akun dengan riwayat panjang dan rentang sempit, index yang sama dipakai langsung.
 
+## Modul Persediaan (Fase 4)
+
+```mermaid
+flowchart LR
+    TRF["Warehouse Transfer"] --> SS["StockService"]
+    OPN["Stock Opname"] --> SS
+    OPN --> JS["JournalService"]
+    SS --> L[("stock_ledger (append-only)")]
+    SS --> B[("stock_balances")]
+    L --> REP["Kartu Stok / Posisi / Mutasi"]
+    B --> REP
+    SS --> PG["PeriodGuard"]
+```
+
+### Skema dan integritas
+
+- `stock_ledger` append-only: tanpa `updated_at`, trigger PostgreSQL menolak `UPDATE` dan `DELETE`. Setiap baris hanya boleh berisi qty masuk **atau** qty keluar, bukan keduanya.
+- `reversal_of_id` menunjuk baris asal; unique partial index memastikan satu baris hanya dibalik sekali.
+- `stock_balances` unik per `(item_id, warehouse_id)` dan menyimpan qty base, average cost 4 desimal, serta nilai persediaan 2 desimal.
+- `warehouse_transfers` + item, `stock_opnames` + item memakai pola dokumen yang sama: `doc_no`, `doc_date`, `period_id`, status, audit, dan soft delete pada header.
+
+### Moving average
+
+- Penerimaan: `avg_baru = (qty_lama * avg_lama + qty_masuk * biaya_masuk) / (qty_lama + qty_masuk)`.
+- Pengeluaran memakai average saat itu; average tidak berubah karena pengeluaran.
+- Nilai persediaan berjalan adalah jumlah nilai baris bertanda, sehingga `balance_value` selalu sama dengan `SUM` ledger. Saat qty habis, nilai baris terakhir dikoreksi agar saldo nilai menjadi nol. Pengeluaran parsial tidak boleh membuat nilai persediaan negatif.
+- Contoh uji: 1.440 @10.000 lalu 1.440 @12.000 menghasilkan avg 11.000 dan nilai 31.680.000; keluar 720 menghasilkan HPP 7.920.000.
+
+### Satu pintu mutasi dan lock
+
+- `StockService::receive()`, `issue()`, `issueWithValue()`, dan `reverse()` adalah satu-satunya penulis ledger dan saldo.
+- Saldo dikunci `FOR UPDATE` dengan urutan `item_id ASC, warehouse_id ASC`. Dokumen multi-baris memanggil `lockBalances()` sebelum mutasi.
+- Urutan lock transaksi: header dokumen -> periode -> saldo -> sequence jurnal. Urutan ini dipakai transfer, stock opname, dan reverse untuk menghindari deadlock.
+- Stok negatif ditolak `422 STOCK_INSUFFICIENT` dengan pesan yang menyebut item, gudang, stok tersedia, dan qty diminta. Setting `allow_negative_stock=true` dapat mengizinkan saldo negatif.
+
+### Pembalikan dan disapprove
+
+- Reverse membuat baris baru dengan arah qty ditukar dan nilai asli, bukan mengubah baris lama. Lihat [ADR 0005](ADR/0005-ledger-immutable-dan-reversal.md).
+- Reverse hanya membalik baris aktif. Baris yang sudah memiliki reversal tidak dibalik lagi, sehingga approve -> disapprove -> approve -> disapprove aman.
+- Reverse ditolak bila periode closed, ada mutasi lanjutan pada item/gudang yang sama, atau pembalikan membuat stok negatif.
+- Aturan disapprove lengkap ada di [ADR 0006](ADR/0006-aturan-disapprove.md). Pemeriksaan dokumen turunan dilakukan oleh action dokumen pemilik turunan pada fase berikutnya.
+
+### Transfer gudang
+
+- Approve mengeluarkan stok dari gudang asal pada average asal, lalu menerima qty dan nilai yang sama di gudang tujuan. Total nilai persediaan tidak berubah.
+- Tidak ada jurnal karena perpindahan hanya terjadi di dalam satu entitas.
+- Disapprove membalik kedua sisi mutasi dan mengembalikan dokumen ke draft.
+
+### Stock opname
+
+- Draft menyimpan snapshot sistem untuk tampilan. Saat approve, saldo terkini dibaca ulang di bawah lock, sehingga hasil akhir selalu sama dengan qty hitung fisik.
+- Selisih minus: `Dr Selisih Persediaan / Cr Persediaan`. Selisih plus: `Dr Persediaan / Cr Selisih Persediaan`. Akun persediaan mengikuti kategori item lewat `AccountMapper`.
+- Jurnal dibuat lewat `JournalService`, sehingga wajib seimbang dan periode harus open. Jika seluruh selisih nol, tidak ada mutasi dan tidak ada jurnal.
+- Disapprove membalik stok lalu jurnal penyesuaian dalam satu transaksi.
+
+### Laporan
+
+- **Kartu Stok** (`/reports/stock-card`): saldo awal per gudang, mutasi bertanggal, saldo berjalan qty/nilai, average berjalan, dan saldo akhir.
+- **Posisi Stok** (`/reports/stock-position`): saldo awal, masuk, keluar, dan akhir per item dan gudang dalam periode.
+- **Mutasi Stok** (`/reports/stock-movement`): daftar baris ledger dalam periode beserta total qty/nilai masuk dan keluar.
+- Laporan menghitung saldo berjalan dari mutasi bertanggal, bukan hanya dari kolom saldo ledger, sehingga dokumen bertanggal mundur tetap tampil konsisten.
+
+### Asumsi
+
+- Dokumen persediaan diharapkan diposting berurutan sesuai tanggal. Kolom `balance_qty`/`balance_value` pada ledger mengikuti urutan posting (id), sedangkan laporan menghitung ulang urutan tanggal.
+- Belum ada dokumen turunan pada Fase 4; pemeriksaan turunan ditambahkan saat Purchasing/Sales dibuat.
+
 ## Keamanan
 
 - Sanctum bearer token dengan masa berlaku dari `SANCTUM_EXPIRATION`.

@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 3 selesai: Mesin akuntansi (COA, periode, jurnal double-entry, jurnal manual, General Ledger, Trial Balance).**
+**Fase 4 selesai: Mesin persediaan (ledger append-only, moving average, transfer gudang, stock opname, dan laporan stok).**
 
 | Area | Kondisi |
 | --- | --- |
@@ -22,13 +22,17 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Harga jual | `GET /selling-prices/lookup` dengan prioritas harga khusus customer, anti-overlap periode |
 | Akuntansi | COA ~50 akun, 12 periode, jurnal manual draft/approve/reverse, constraint keseimbangan di database |
 | Laporan awal | General Ledger (CTE + window function) dan Trial Balance, parameter binding |
+| Persediaan | `stock_ledger` append-only dengan trigger PostgreSQL, `stock_balances`, moving average 4 desimal, stok negatif ditolak `STOCK_INSUFFICIENT` |
+| Transfer gudang | Draft/approve/disapprove, keluar pada avg asal dan masuk pada nilai sama, tanpa jurnal |
+| Stock opname | Selisih minus/plus menghasilkan mutasi stok dan jurnal penyesuaian lewat `JournalService` |
+| Laporan stok | Kartu Stok, Posisi Stok, dan Mutasi Stok dengan saldo berjalan |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
 | Settings | `settings` bertipe dengan nilai default aman; `account_settings` terisi 15 pemetaan akun |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (184 test + 1 placeholder), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (217 test + 1 placeholder), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Purchasing, Sales, Inventory, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Purchasing, Sales, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -46,6 +50,17 @@ Modul Purchasing, Sales, Inventory, dan Manufacturing dikerjakan pada fase berik
 - **Harga jual**: prioritas harga khusus customer yang berlaku pada tanggal transaksi, lalu harga umum; baris dengan `valid_from` terbaru menang. Respons lookup menyertakan `unit_price_base`.
 - **Soft delete** pada semua master, dengan unique index parsial. Penghapusan ditolak `409 MASTER_IN_USE` bila data masih dipakai item, konversi, harga jual, atau dokumen (tabel dokumen otomatis ikut diperiksa begitu tersedia).
 - **Seeder awal**: 6 satuan (Pcs, Pack, Dus, Meter, Roll, Kilogram), 6 kategori, 2 gudang.
+
+### Cakupan Persediaan
+
+- **Ledger immutable**: `stock_ledger` append-only, trigger PostgreSQL menolak `UPDATE`/`DELETE`; koreksi selalu berupa baris pembalik dengan `reversal_of_id`. Lihat [ADR 0005](docs/ADR/0005-ledger-immutable-dan-reversal.md).
+- **Satu pintu mutasi**: `StockService` menerima, mengeluarkan, dan membalik stok. Saldo dikunci `FOR UPDATE` dengan urutan `item_id, warehouse_id` agar aman untuk transaksi paralel.
+- **Moving average**: avg disimpan 4 desimal, nilai persediaan 2 desimal, dan `balance_value` selalu konsisten dengan `SUM` ledger. Contoh: 1.440 @10.000 + 1.440 @12.000 = avg 11.000, nilai 31.680.000; keluar 720 = HPP 7.920.000.
+- **Transfer gudang**: approve memindahkan qty dan nilai yang sama antar gudang; total nilai persediaan tetap dan tidak ada jurnal.
+- **Stock opname**: approve menghitung ulang saldo terkini, membuat mutasi selisih, lalu jurnal `Dr Selisih Persediaan / Cr Persediaan` atau kebalikannya. Disapprove membalik stok dan jurnal dalam satu transaksi. Aturan lengkap di [ADR 0006](docs/ADR/0006-aturan-disapprove.md).
+- **Endpoint**: `GET /stock/balances`, `GET /stock/ledger`, `GET /items/{id}/stock`, CRUD `/warehouse-transfers` dan `/stock-opnames`, plus approve/disapprove/audit.
+- **Laporan**: `GET /reports/stock-card`, `/reports/stock-position`, dan `/reports/stock-movement`.
+- **Test wajib**: moving average dan HPP, stok negatif, transfer tanpa jurnal, opname minus/plus, dua pengeluaran paralel pada stok terbatas, reverse dengan mutasi lanjutan, dan trigger ledger immutable.
 
 ### Mode demo
 

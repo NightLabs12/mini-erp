@@ -11,14 +11,19 @@ use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ItemCategoryController;
 use App\Http\Controllers\Api\V1\ItemController;
+use App\Http\Controllers\Api\V1\ItemStockController;
 use App\Http\Controllers\Api\V1\ItemUnitConversionController;
 use App\Http\Controllers\Api\V1\JournalController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SellingPriceController;
+use App\Http\Controllers\Api\V1\StockBalanceController;
+use App\Http\Controllers\Api\V1\StockLedgerController;
+use App\Http\Controllers\Api\V1\StockOpnameController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\UnitController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\WarehouseController;
+use App\Http\Controllers\Api\V1\WarehouseTransferController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
@@ -57,6 +62,9 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('items/{item}/unit-conversions/{conversion}', [ItemUnitConversionController::class, 'destroy'])
             ->name('api.v1.items.unit-conversions.destroy');
 
+        Route::get('items/{item}/stock', [ItemStockController::class, 'show'])
+            ->middleware('permission:inventory.stock.view')
+            ->name('api.v1.items.stock');
         Route::get('items/{item}/audit', [ItemController::class, 'audit'])->name('api.v1.items.audit');
         Route::apiResource('items', ItemController::class);
 
@@ -87,6 +95,32 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.journals.reverse');
         Route::apiResource('journals', JournalController::class);
 
+        // Persediaan: saldo, ledger, transfer gudang, dan stock opname.
+        Route::get('stock/balances', [StockBalanceController::class, 'index'])
+            ->middleware('permission:inventory.stock.view')
+            ->name('api.v1.stock.balances.index');
+        Route::get('stock/ledger', [StockLedgerController::class, 'index'])
+            ->middleware('permission:inventory.stock.view')
+            ->name('api.v1.stock.ledger.index');
+
+        Route::get('warehouse-transfers/{warehouseTransfer}/audit', [WarehouseTransferController::class, 'audit'])
+            ->name('api.v1.warehouse-transfers.audit');
+        Route::post('warehouse-transfers/{warehouseTransfer}/approve', [WarehouseTransferController::class, 'approve'])
+            ->name('api.v1.warehouse-transfers.approve');
+        Route::post('warehouse-transfers/{warehouseTransfer}/disapprove', [WarehouseTransferController::class, 'disapprove'])
+            ->name('api.v1.warehouse-transfers.disapprove');
+        Route::apiResource('warehouse-transfers', WarehouseTransferController::class)
+            ->parameters(['warehouse-transfers' => 'warehouseTransfer']);
+
+        Route::get('stock-opnames/{stockOpname}/audit', [StockOpnameController::class, 'audit'])
+            ->name('api.v1.stock-opnames.audit');
+        Route::post('stock-opnames/{stockOpname}/approve', [StockOpnameController::class, 'approve'])
+            ->name('api.v1.stock-opnames.approve');
+        Route::post('stock-opnames/{stockOpname}/disapprove', [StockOpnameController::class, 'disapprove'])
+            ->name('api.v1.stock-opnames.disapprove');
+        Route::apiResource('stock-opnames', StockOpnameController::class)
+            ->parameters(['stock-opnames' => 'stockOpname']);
+
         Route::get('accounting-periods', [AccountingPeriodController::class, 'index'])
             ->name('api.v1.accounting-periods.index');
         Route::get('accounting-periods/{accountingPeriod}', [AccountingPeriodController::class, 'show'])
@@ -103,5 +137,14 @@ Route::prefix('v1')->group(function (): void {
         Route::get('reports/trial-balance', [ReportController::class, 'trialBalance'])
             ->middleware('permission:report.trial-balance.view')
             ->name('api.v1.reports.trial-balance');
+        Route::get('reports/stock-card', [ReportController::class, 'stockCard'])
+            ->middleware('permission:report.stock-card.view')
+            ->name('api.v1.reports.stock-card');
+        Route::get('reports/stock-position', [ReportController::class, 'stockPosition'])
+            ->middleware('permission:report.stock-position.view')
+            ->name('api.v1.reports.stock-position');
+        Route::get('reports/stock-movement', [ReportController::class, 'stockMovement'])
+            ->middleware('permission:report.stock-movement.view')
+            ->name('api.v1.reports.stock-movement');
     });
 });

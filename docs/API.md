@@ -224,6 +224,78 @@ Tutup periode memvalidasi: periode sebelumnya closed, seluruh jurnal seimbang, t
 
 Laporan menerima `?from=YYYY-MM-DD&to=YYYY-MM-DD`; General Ledger juga menerima `?account_id=`. Default-nya bulan berjalan.
 
+## Persediaan
+
+| Metode | Path | Permission |
+| --- | --- | --- |
+| GET | `/stock/balances` | `inventory.stock.view` |
+| GET | `/stock/ledger` | `inventory.stock.view` |
+| GET | `/items/{id}/stock` | `inventory.stock.view` |
+| GET/POST | `/warehouse-transfers` | `inventory.warehouse-transfer.view` / `create` |
+| GET/PUT/DELETE | `/warehouse-transfers/{id}` | `view` / `update` / `delete` |
+| POST | `/warehouse-transfers/{id}/approve` | `inventory.warehouse-transfer.approve` |
+| POST | `/warehouse-transfers/{id}/disapprove` | `inventory.warehouse-transfer.disapprove` |
+| GET | `/warehouse-transfers/{id}/audit` | `inventory.warehouse-transfer.view` |
+| GET/POST | `/stock-opnames` | `inventory.stock-opname.view` / `create` |
+| GET/PUT/DELETE | `/stock-opnames/{id}` | `view` / `update` / `delete` |
+| POST | `/stock-opnames/{id}/approve` | `inventory.stock-opname.approve` |
+| POST | `/stock-opnames/{id}/disapprove` | `inventory.stock-opname.disapprove` |
+| GET | `/stock-opnames/{id}/audit` | `inventory.stock-opname.view` |
+| GET | `/reports/stock-card` | `report.stock-card.view` |
+| GET | `/reports/stock-position` | `report.stock-position.view` |
+| GET | `/reports/stock-movement` | `report.stock-movement.view` |
+
+Saldo dan ledger hanya bisa dibaca. Mutasi stok hanya lahir dari approve dokumen lewat `StockService`; tidak ada endpoint untuk menulis ledger langsung.
+
+### Saldo, ledger, dan stok per item
+
+- `/stock/balances` menerima `?filter[item_id]=`, `?filter[warehouse_id]=`, `?search=` (SKU/nama item atau kode/nama gudang), `?sort=`, `?page=`, `?per_page=`.
+- `/stock/ledger` menerima filter `item_id`, `warehouse_id`, `doc_type`, `doc_id`, `movement_date` (termasuk `[from]`/`[to]`), dan `reversal_of_id`.
+- `/items/{id}/stock` mengembalikan saldo item di semua gudang, total qty base, dan total nilai.
+
+### Transfer gudang
+
+```bash
+curl -X POST http://localhost:8100/api/v1/warehouse-transfers \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "from_warehouse_id": 1,
+    "to_warehouse_id": 2,
+    "notes": "Pindah stok",
+    "items": [
+      {"item_id": 1, "unit_id": 3, "qty": "5"}
+    ]
+  }'
+```
+
+Approve mengeluarkan stok dari gudang asal pada average asal dan menerima qty serta nilai yang sama di gudang tujuan. Total nilai persediaan tidak berubah dan **tidak ada jurnal**. Disapprove membalik kedua sisi mutasi.
+
+### Stock opname
+
+```bash
+curl -X POST http://localhost:8100/api/v1/stock-opnames \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "warehouse_id": 1,
+    "notes": "Hitung fisik",
+    "items": [
+      {"item_id": 1, "unit_id": 1, "counted_qty": "2150"}
+    ]
+  }'
+```
+
+Saat approve, sistem membaca saldo terkini dan menghitung ulang selisih. Selisih minus menghasilkan `Dr Selisih Persediaan / Cr Persediaan`; selisih plus menghasilkan `Dr Persediaan / Cr Selisih Persediaan`. Jurnal dibuat lewat `JournalService` dan wajib seimbang. Jika seluruh selisih nol, tidak ada mutasi dan tidak ada jurnal. Disapprove membalik stok dan jurnal penyesuaian.
+
+### Laporan persediaan
+
+- **Kartu Stok**: `?item_id=` wajib, `?warehouse_id=` opsional, `?from=` dan `?to=` default bulan berjalan. Mengembalikan saldo awal, baris mutasi dengan saldo berjalan, average berjalan, dan saldo akhir per gudang.
+- **Posisi Stok**: `?from=`, `?to=`, opsional `?item_id=` dan `?warehouse_id=`. Mengembalikan saldo awal, masuk, keluar, dan akhir per item dan gudang.
+- **Mutasi Stok**: filter yang sama; mengembalikan baris ledger dan total qty/nilai masuk-keluar.
+
+Semua nilai qty memakai 4 desimal dan nilai uang 2 desimal. Baris pembalik ikut tampil dengan `reversal_of_id`.
+
 ## Kode error
 
 | Kode | HTTP | Kapan |
@@ -256,4 +328,16 @@ Laporan menerima `?from=YYYY-MM-DD&to=YYYY-MM-DD`; General Ledger juga menerima 
 | `PERIOD_LATER_CLOSED` | 409 | Reopen periode yang diikuti periode closed |
 | `LAST_ADMIN` | 409 | Mencabut atau menonaktifkan admin aktif terakhir |
 | `UNKNOWN_DOC_TYPE` | 422 | Prefix dokumen tidak dikenal |
+| `STOCK_INSUFFICIENT` | 422 | Qty keluar melebihi saldo dan stok negatif tidak diizinkan |
+| `STOCK_REVERSAL_BLOCKED` | 409 | Reverse/disapprove ditolak karena ada mutasi lanjutan |
+| `STOCK_ALREADY_REVERSED` | 409 | Seluruh mutasi aktif dokumen sudah dibalik |
+| `STOCK_NOT_FOUND` | 404 | Dokumen tidak memiliki mutasi stok |
+| `STOCK_DOC_REF_INVALID` | 422 | Reverse tanpa `doc_id` |
+| `STOCK_QTY_INVALID` | 422 | Qty stok nol/negatif pada mutasi |
+| `STOCK_COST_INVALID` | 422 | Biaya atau nilai persediaan negatif |
+| `SAME_WAREHOUSE_TRANSFER` | 422 | Gudang asal dan tujuan sama |
+| `DOCUMENT_NOT_DRAFT` | 409 | Aksi draft dilakukan pada dokumen non-draft |
+| `DOCUMENT_NOT_APPROVED` | 409 | Disapprove dilakukan pada dokumen yang belum approved |
+| `DOCUMENT_STATE_INVALID` | 409 | Aksi tidak diizinkan dari status dokumen saat ini |
+| `DOCUMENT_EMPTY` | 422 | Dokumen tidak memiliki baris item |
 | `SERVER_ERROR` | 500 | Kesalahan tak terduga |

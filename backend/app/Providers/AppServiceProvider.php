@@ -11,6 +11,12 @@ use App\Domain\Accounting\Models\JournalLine;
 use App\Domain\Core\Models\AuditLog;
 use App\Domain\Core\Models\User;
 use App\Domain\Core\Services\SettingService;
+use App\Domain\Inventory\Models\StockBalance;
+use App\Domain\Inventory\Models\StockLedger;
+use App\Domain\Inventory\Models\StockOpname;
+use App\Domain\Inventory\Models\StockOpnameItem;
+use App\Domain\Inventory\Models\WarehouseTransfer;
+use App\Domain\Inventory\Models\WarehouseTransferItem;
 use App\Domain\Master\Models\Customer;
 use App\Domain\Master\Models\Item;
 use App\Domain\Master\Models\ItemCategory;
@@ -26,10 +32,12 @@ use App\Policies\ItemCategoryPolicy;
 use App\Policies\ItemPolicy;
 use App\Policies\JournalPolicy;
 use App\Policies\SellingPricePolicy;
+use App\Policies\StockOpnamePolicy;
 use App\Policies\SupplierPolicy;
 use App\Policies\UnitPolicy;
 use App\Policies\UserPolicy;
 use App\Policies\WarehousePolicy;
+use App\Policies\WarehouseTransferPolicy;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -72,6 +80,12 @@ class AppServiceProvider extends ServiceProvider
             'accounting_period' => AccountingPeriod::class,
             'journal' => Journal::class,
             'journal_line' => JournalLine::class,
+            'stock_ledger' => StockLedger::class,
+            'stock_balance' => StockBalance::class,
+            'warehouse_transfer' => WarehouseTransfer::class,
+            'warehouse_transfer_item' => WarehouseTransferItem::class,
+            'stock_opname' => StockOpname::class,
+            'stock_opname_item' => StockOpnameItem::class,
         ]);
 
         // Membantu menangkap N+1 query sejak fase pengembangan dan test.
@@ -104,6 +118,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(SellingPrice::class, SellingPricePolicy::class);
         Gate::policy(Journal::class, JournalPolicy::class);
         Gate::policy(AccountingPeriod::class, AccountingPeriodPolicy::class);
+        Gate::policy(WarehouseTransfer::class, WarehouseTransferPolicy::class);
+        Gate::policy(StockOpname::class, StockOpnamePolicy::class);
 
         // Dokumentasi API sengaja terbuka untuk demo portofolio. Matikan lewat
         // API_DOCS_PUBLIC=false bila instance dipakai dengan data nyata.
