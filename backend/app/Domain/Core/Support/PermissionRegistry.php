@@ -19,7 +19,7 @@ final class PermissionRegistry
     public const DOCUMENT = ['view', 'create', 'update', 'delete', 'approve', 'disapprove', 'close', 'print'];
 
     /** @var list<string> */
-    public const PAYMENT = ['view', 'create', 'update', 'delete', 'approve', 'print'];
+    public const PAYMENT = ['view', 'create', 'update', 'delete', 'approve', 'disapprove', 'print'];
 
     /** @var list<string> */
     public const REPORT_CODES = [

@@ -8,18 +8,23 @@ use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
 use App\Http\Controllers\Api\V1\Auth\MeController;
 use App\Http\Controllers\Api\V1\CustomerController;
+use App\Http\Controllers\Api\V1\GoodsReceiptController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ItemCategoryController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\ItemStockController;
 use App\Http\Controllers\Api\V1\ItemUnitConversionController;
 use App\Http\Controllers\Api\V1\JournalController;
+use App\Http\Controllers\Api\V1\PurchaseInvoiceController;
+use App\Http\Controllers\Api\V1\PurchaseOrderController;
+use App\Http\Controllers\Api\V1\PurchaseRequestController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SellingPriceController;
 use App\Http\Controllers\Api\V1\StockBalanceController;
 use App\Http\Controllers\Api\V1\StockLedgerController;
 use App\Http\Controllers\Api\V1\StockOpnameController;
 use App\Http\Controllers\Api\V1\SupplierController;
+use App\Http\Controllers\Api\V1\SupplierPaymentController;
 use App\Http\Controllers\Api\V1\UnitController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\WarehouseController;
@@ -95,6 +100,60 @@ Route::prefix('v1')->group(function (): void {
             ->name('api.v1.journals.reverse');
         Route::apiResource('journals', JournalController::class);
 
+        // Purchasing: PR -> PO -> GR -> PI -> Payment Out.
+        Route::get('purchase-requests/{purchaseRequest}/audit', [PurchaseRequestController::class, 'audit'])
+            ->name('api.v1.purchase-requests.audit');
+        Route::post('purchase-requests/{purchaseRequest}/approve', [PurchaseRequestController::class, 'approve'])
+            ->name('api.v1.purchase-requests.approve');
+        Route::post('purchase-requests/{purchaseRequest}/disapprove', [PurchaseRequestController::class, 'disapprove'])
+            ->name('api.v1.purchase-requests.disapprove');
+        Route::post('purchase-requests/{purchaseRequest}/close', [PurchaseRequestController::class, 'close'])
+            ->name('api.v1.purchase-requests.close');
+        Route::post('purchase-requests/{purchaseRequest}/convert', [PurchaseRequestController::class, 'convert'])
+            ->name('api.v1.purchase-requests.convert');
+        Route::apiResource('purchase-requests', PurchaseRequestController::class)
+            ->parameters(['purchase-requests' => 'purchaseRequest']);
+
+        Route::get('purchase-orders/{purchaseOrder}/print', [PurchaseOrderController::class, 'print'])
+            ->name('api.v1.purchase-orders.print');
+        Route::get('purchase-orders/{purchaseOrder}/audit', [PurchaseOrderController::class, 'audit'])
+            ->name('api.v1.purchase-orders.audit');
+        Route::post('purchase-orders/{purchaseOrder}/approve', [PurchaseOrderController::class, 'approve'])
+            ->name('api.v1.purchase-orders.approve');
+        Route::post('purchase-orders/{purchaseOrder}/disapprove', [PurchaseOrderController::class, 'disapprove'])
+            ->name('api.v1.purchase-orders.disapprove');
+        Route::post('purchase-orders/{purchaseOrder}/close', [PurchaseOrderController::class, 'close'])
+            ->name('api.v1.purchase-orders.close');
+        Route::apiResource('purchase-orders', PurchaseOrderController::class)
+            ->parameters(['purchase-orders' => 'purchaseOrder']);
+
+        Route::get('goods-receipts/{goodsReceipt}/audit', [GoodsReceiptController::class, 'audit'])
+            ->name('api.v1.goods-receipts.audit');
+        Route::post('goods-receipts/{goodsReceipt}/approve', [GoodsReceiptController::class, 'approve'])
+            ->name('api.v1.goods-receipts.approve');
+        Route::post('goods-receipts/{goodsReceipt}/disapprove', [GoodsReceiptController::class, 'disapprove'])
+            ->name('api.v1.goods-receipts.disapprove');
+        Route::apiResource('goods-receipts', GoodsReceiptController::class)
+            ->parameters(['goods-receipts' => 'goodsReceipt']);
+
+        Route::get('purchase-invoices/{purchaseInvoice}/audit', [PurchaseInvoiceController::class, 'audit'])
+            ->name('api.v1.purchase-invoices.audit');
+        Route::post('purchase-invoices/{purchaseInvoice}/approve', [PurchaseInvoiceController::class, 'approve'])
+            ->name('api.v1.purchase-invoices.approve');
+        Route::post('purchase-invoices/{purchaseInvoice}/disapprove', [PurchaseInvoiceController::class, 'disapprove'])
+            ->name('api.v1.purchase-invoices.disapprove');
+        Route::apiResource('purchase-invoices', PurchaseInvoiceController::class)
+            ->parameters(['purchase-invoices' => 'purchaseInvoice']);
+
+        Route::get('supplier-payments/{supplierPayment}/audit', [SupplierPaymentController::class, 'audit'])
+            ->name('api.v1.supplier-payments.audit');
+        Route::post('supplier-payments/{supplierPayment}/approve', [SupplierPaymentController::class, 'approve'])
+            ->name('api.v1.supplier-payments.approve');
+        Route::post('supplier-payments/{supplierPayment}/disapprove', [SupplierPaymentController::class, 'disapprove'])
+            ->name('api.v1.supplier-payments.disapprove');
+        Route::apiResource('supplier-payments', SupplierPaymentController::class)
+            ->parameters(['supplier-payments' => 'supplierPayment']);
+
         // Persediaan: saldo, ledger, transfer gudang, dan stock opname.
         Route::get('stock/balances', [StockBalanceController::class, 'index'])
             ->middleware('permission:inventory.stock.view')
@@ -146,5 +205,17 @@ Route::prefix('v1')->group(function (): void {
         Route::get('reports/stock-movement', [ReportController::class, 'stockMovement'])
             ->middleware('permission:report.stock-movement.view')
             ->name('api.v1.reports.stock-movement');
+        Route::get('reports/po-outstanding', [ReportController::class, 'poOutstanding'])
+            ->middleware('permission:report.po-outstanding.view')
+            ->name('api.v1.reports.po-outstanding');
+        Route::get('reports/purchase-summary', [ReportController::class, 'purchaseSummary'])
+            ->middleware('permission:report.purchase-summary.view')
+            ->name('api.v1.reports.purchase-summary');
+        Route::get('reports/ap-outstanding', [ReportController::class, 'apOutstanding'])
+            ->middleware('permission:report.ap-outstanding.view')
+            ->name('api.v1.reports.ap-outstanding');
+        Route::get('reports/ap-aging', [ReportController::class, 'apAging'])
+            ->middleware('permission:report.ap-aging.view')
+            ->name('api.v1.reports.ap-aging');
     });
 });

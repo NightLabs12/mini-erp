@@ -37,15 +37,10 @@ it('menyebut tabel dan kolom yang valid untuk setiap referensi master', function
 
 it('menandai tabel referensi yang belum ada sebagai pending secara eksplisit', function (): void {
     $pending = [
-        'purchase_order_items',
         'sales_order_items',
-        'goods_receipt_items',
         'delivery_order_items',
-        'purchase_orders',
         'sales_orders',
-        'goods_receipts',
         'delivery_orders',
-        'purchase_invoices',
         'sales_invoices',
     ];
 

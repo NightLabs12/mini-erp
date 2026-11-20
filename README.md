@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 4 selesai: Mesin persediaan (ledger append-only, moving average, transfer gudang, stock opname, dan laporan stok).**
+**Fase 5 selesai: Purchasing (PR -> PO -> GR -> PI -> Payment Out) dengan state machine, pelacakan qty, jurnal, laporan, dan cetak PO.**
 
 | Area | Kondisi |
 | --- | --- |
@@ -14,7 +14,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Infra | `docker-compose.yml` (php-fpm, nginx, postgres 16, node), Makefile, GitHub Actions |
 | Auth | Sanctum bearer token, login/logout/me, token expiry, rate limit login per email + IP |
 | Keamanan token | User nonaktif (`is_active=false`) ditolak `403 USER_INACTIVE`, user terhapus `401`; ganti password dan nonaktifkan akun mencabut token |
-| RBAC | 6 role, 174 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
+| RBAC | 6 role, 176 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
 | Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /{resource}/{id}/audit` untuk user dan seluruh master |
 | Penomoran | `DocumentSequenceService` mengikuti `doc_date`, reset per bulan, tanpa celah saat rollback, teruji 50 proses paralel |
 | Master data | 8 resource CRUD dengan pagination, filter, sort, search, soft delete, dan proteksi hapus saat masih dipakai |
@@ -26,13 +26,19 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Transfer gudang | Draft/approve/disapprove, keluar pada avg asal dan masuk pada nilai sama, tanpa jurnal |
 | Stock opname | Selisih minus/plus menghasilkan mutasi stok dan jurnal penyesuaian lewat `JournalService` |
 | Laporan stok | Kartu Stok, Posisi Stok, dan Mutasi Stok dengan saldo berjalan |
+| Purchasing | PR -> PO -> GR -> PI -> Payment Out, state machine draft/approved/closed, approve/disapprove/close, pelacakan `received_qty_base` dan `invoiced_qty_base` |
+| PO | Diskon baris, PPN 11%, total dengan pembulatan HALF_UP, auto-close saat terpenuhi penuh, close manual, cetak PDF |
+| GR | Parsial, toleransi over-receipt dari setting, biaya PO bersih per base, jurnal Dr Persediaan / Cr GR/IR |
+| PI | Satu invoice untuk beberapa GR, due date dari payment term, GR/IR, PPN Masukan, selisih harga, Hutang Usaha |
+| Payment Out | Alokasi parsial ke banyak invoice, validasi sisa, jurnal Dr Hutang Usaha / Cr Kas atau Bank |
+| Laporan purchasing | PO Outstanding, Purchase Summary, AP Outstanding, dan AP Aging |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
 | Settings | `settings` bertipe dengan nilai default aman; `account_settings` terisi 15 pemetaan akun |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (217 test + 1 placeholder), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (244 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Purchasing, Sales, dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Sales dan Manufacturing dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -40,7 +46,7 @@ Modul Purchasing, Sales, dan Manufacturing dikerjakan pada fase berikutnya. Renc
 - **User management**: CRUD user, assign role, aktif/nonaktif, proteksi hapus diri sendiri dan admin aktif terakhir.
 - **Audit**: setiap create/update/delete model ber-trait `Auditable` tercatat dengan `old_values`, `new_values`, dan `diff`.
 - **Penomoran dokumen**: `{PREFIX}/{YYYY}/{MM}/{0000}` per jenis, tahun, dan bulan, mengikuti tanggal dokumen.
-- **Settings**: `allow_negative_stock`, `tax_rate` (11), `require_no_draft_on_close`, dan lainnya, lengkap dengan default di kode.
+- **Settings**: `allow_negative_stock`, `tax_rate` (11), `gr_over_receipt_tolerance_pct`, `require_no_draft_on_close`, dan lainnya, lengkap dengan default di kode.
 
 ### Cakupan Master data
 
@@ -61,6 +67,20 @@ Modul Purchasing, Sales, dan Manufacturing dikerjakan pada fase berikutnya. Renc
 - **Endpoint**: `GET /stock/balances`, `GET /stock/ledger`, `GET /items/{id}/stock`, CRUD `/warehouse-transfers` dan `/stock-opnames`, plus approve/disapprove/audit.
 - **Laporan**: `GET /reports/stock-card`, `/reports/stock-position`, dan `/reports/stock-movement`.
 - **Test wajib**: moving average dan HPP, stok negatif, transfer tanpa jurnal, opname minus/plus, dua pengeluaran paralel pada stok terbatas, reverse dengan mutasi lanjutan, dan trigger ledger immutable.
+
+### Cakupan Purchasing
+
+- **Alur dokumen**: Purchase Request -> Purchase Order -> Goods Receipt -> Purchase Invoice -> Supplier Payment. Setiap dokumen memiliki state machine `draft -> approved -> closed` dan aksi approve/disapprove/close sesuai aturan SPEC 3.3.
+- **Purchase Request** dapat dikonversi menjadi PO dengan menyalin baris; setelah dikonversi PR ditutup.
+- **Purchase Order**: diskon baris, PPN dari setting atau override, total dengan pembulatan 2 desimal HALF_UP. `unit_price_base` adalah harga bersih per satuan base tanpa pajak dan menjadi biaya penerimaan GR. PO otomatis closed saat seluruh qty diterima, dan dapat ditutup manual.
+- **Goods Receipt**: boleh parsial; qty dibatasi sisa PO ditambah `gr_over_receipt_tolerance_pct`. Approve memanggil `StockService::receive()` dan membentuk jurnal `Dr Persediaan / Cr GR/IR` per kategori item.
+- **Purchase Invoice**: dapat menagih beberapa GR dalam satu invoice. Due date dihitung dari `suppliers.payment_term_days`. Jurnal membebaskan GR/IR, mencatat PPN Masukan, selisih harga pembelian, dan Hutang Usaha.
+- **Payment Out**: alokasi parsial ke banyak invoice, tidak boleh melebihi sisa, total alokasi harus sama dengan amount. Metode `cash`/`bank` memakai akun dari `account_settings` atau `account_id` eksplisit.
+- **Disapprove** mengikuti aturan 3.3: ditolak bila ada dokumen turunan aktif, sudah dibayar, atau periode closed. GR yang sudah ditagih tidak dapat dibatalkan.
+- **Endpoint**: CRUD `/purchase-requests`, `/purchase-orders`, `/goods-receipts`, `/purchase-invoices`, `/supplier-payments`; aksi `approve`, `disapprove`, `close`, `convert`, `print`, dan `audit`.
+- **Laporan**: `GET /reports/po-outstanding`, `/reports/purchase-summary`, `/reports/ap-outstanding`, `/reports/ap-aging`.
+- **Cetak**: `GET /purchase-orders/{id}/print` menghasilkan PDF PO.
+- **Test**: skenario acceptance langkah 1-4, approve GR idempoten, disapprove GR dengan reversal, tolak GR yang sudah ditagih/mutasi lanjutan/periode closed, PI dengan selisih harga, pembayaran parsial multi-invoice, PO parsial/terpenuhi, dan tolak qty melebihi sisa.
 
 ### Mode demo
 

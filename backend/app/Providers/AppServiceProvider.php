@@ -25,14 +25,29 @@ use App\Domain\Master\Models\SellingPrice;
 use App\Domain\Master\Models\Supplier;
 use App\Domain\Master\Models\Unit;
 use App\Domain\Master\Models\Warehouse;
+use App\Domain\Purchasing\Models\GoodsReceipt;
+use App\Domain\Purchasing\Models\GoodsReceiptItem;
+use App\Domain\Purchasing\Models\PurchaseInvoice;
+use App\Domain\Purchasing\Models\PurchaseInvoiceItem;
+use App\Domain\Purchasing\Models\PurchaseOrder;
+use App\Domain\Purchasing\Models\PurchaseOrderItem;
+use App\Domain\Purchasing\Models\PurchaseRequest;
+use App\Domain\Purchasing\Models\PurchaseRequestItem;
+use App\Domain\Purchasing\Models\SupplierPayment;
+use App\Domain\Purchasing\Models\SupplierPaymentAllocation;
 use App\Policies\AccountingPeriodPolicy;
 use App\Policies\AuditLogPolicy;
 use App\Policies\CustomerPolicy;
+use App\Policies\GoodsReceiptPolicy;
 use App\Policies\ItemCategoryPolicy;
 use App\Policies\ItemPolicy;
 use App\Policies\JournalPolicy;
+use App\Policies\PurchaseInvoicePolicy;
+use App\Policies\PurchaseOrderPolicy;
+use App\Policies\PurchaseRequestPolicy;
 use App\Policies\SellingPricePolicy;
 use App\Policies\StockOpnamePolicy;
+use App\Policies\SupplierPaymentPolicy;
 use App\Policies\SupplierPolicy;
 use App\Policies\UnitPolicy;
 use App\Policies\UserPolicy;
@@ -86,6 +101,16 @@ class AppServiceProvider extends ServiceProvider
             'warehouse_transfer_item' => WarehouseTransferItem::class,
             'stock_opname' => StockOpname::class,
             'stock_opname_item' => StockOpnameItem::class,
+            'purchase_request' => PurchaseRequest::class,
+            'purchase_request_item' => PurchaseRequestItem::class,
+            'purchase_order' => PurchaseOrder::class,
+            'purchase_order_item' => PurchaseOrderItem::class,
+            'goods_receipt' => GoodsReceipt::class,
+            'goods_receipt_item' => GoodsReceiptItem::class,
+            'purchase_invoice' => PurchaseInvoice::class,
+            'purchase_invoice_item' => PurchaseInvoiceItem::class,
+            'supplier_payment' => SupplierPayment::class,
+            'supplier_payment_allocation' => SupplierPaymentAllocation::class,
         ]);
 
         // Membantu menangkap N+1 query sejak fase pengembangan dan test.
@@ -120,6 +145,11 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(AccountingPeriod::class, AccountingPeriodPolicy::class);
         Gate::policy(WarehouseTransfer::class, WarehouseTransferPolicy::class);
         Gate::policy(StockOpname::class, StockOpnamePolicy::class);
+        Gate::policy(PurchaseRequest::class, PurchaseRequestPolicy::class);
+        Gate::policy(PurchaseOrder::class, PurchaseOrderPolicy::class);
+        Gate::policy(GoodsReceipt::class, GoodsReceiptPolicy::class);
+        Gate::policy(PurchaseInvoice::class, PurchaseInvoicePolicy::class);
+        Gate::policy(SupplierPayment::class, SupplierPaymentPolicy::class);
 
         // Dokumentasi API sengaja terbuka untuk demo portofolio. Matikan lewat
         // API_DOCS_PUBLIC=false bila instance dipakai dengan data nyata.

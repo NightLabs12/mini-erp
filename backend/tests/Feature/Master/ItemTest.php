@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 use App\Domain\Master\Models\Item;
+use App\Domain\Master\Models\Supplier;
+use App\Domain\Master\Models\Warehouse;
+use App\Domain\Purchasing\Services\PurchaseOrderService;
+use Database\Seeders\AccountingSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -249,11 +253,30 @@ it('menolak ubah struktur item yang sudah dipakai dokumen', function (): void {
         );
     }
 
-    $item = masterItem($this->pcs, ['category_id' => $this->category->getKey()]);
+    $this->seed(AccountingSeeder::class);
 
-    // Setelah Fase 4, ganti baris ini dengan pembuatan PO lewat service agar
-    // seluruh kolom wajib dan FK terisi konsisten.
-    DB::table('purchase_order_items')->insert(['item_id' => $item->getKey()]);
+    $item = masterItem($this->pcs, ['category_id' => $this->category->getKey()]);
+    addConversion($item, $this->dus, '144');
+
+    $supplier = Supplier::factory()->create();
+    $warehouse = Warehouse::factory()->create();
+
+    $orders = app(PurchaseOrderService::class);
+    $order = $orders->create([
+        'doc_date' => now()->toDateString(),
+        'supplier_id' => $supplier->getKey(),
+        'warehouse_id' => $warehouse->getKey(),
+        'items' => [
+            [
+                'item_id' => $item->getKey(),
+                'unit_id' => $this->dus->getKey(),
+                'qty' => '1',
+                'unit_price' => '1440000',
+                'discount_pct' => '0',
+            ],
+        ],
+    ]);
+    $orders->approve($order);
 
     $this->withHeaders($this->headers)
         ->putJson("/api/v1/items/{$item->getKey()}", ['base_unit_id' => $this->dus->getKey()])

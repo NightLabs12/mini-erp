@@ -10,6 +10,8 @@ use App\Domain\Master\Models\Item;
 use App\Domain\Master\Models\ItemCategory;
 use App\Domain\Master\Models\ItemUnitConversion;
 use App\Domain\Master\Models\Unit;
+use App\Domain\Purchasing\Models\PurchaseInvoice;
+use App\Domain\Purchasing\Models\PurchaseOrder;
 use App\Support\Math\Decimal;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -165,4 +167,79 @@ function assertJournalBalanced(Journal $journal): void
     expect(Decimal::compare($debit, $credit, Decimal::MONEY_SCALE))->toBe(0)
         ->and(Decimal::compare($debit, (string) $journal->total_debit, Decimal::MONEY_SCALE))->toBe(0)
         ->and(Decimal::compare($credit, (string) $journal->total_credit, Decimal::MONEY_SCALE))->toBe(0);
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function purchasingOrder(array $overrides = []): PurchaseOrder
+{
+    return test()->orders->create([
+        'doc_date' => test()->date,
+        'supplier_id' => test()->supplier->getKey(),
+        'warehouse_id' => test()->warehouse->getKey(),
+        'notes' => 'PO uji',
+        'items' => [
+            [
+                'item_id' => test()->item->getKey(),
+                'unit_id' => test()->dus->getKey(),
+                'qty' => '10',
+                'unit_price' => '1440000',
+                'discount_pct' => '0',
+            ],
+        ],
+        ...$overrides,
+    ]);
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function purchasingReceipt(PurchaseOrder $order, array $overrides = []): App\Domain\Purchasing\Models\GoodsReceipt
+{
+    $poItem = $order->items()->firstOrFail();
+
+    return test()->receipts->create([
+        'doc_date' => test()->date,
+        'purchase_order_id' => $order->getKey(),
+        'notes' => 'GR uji',
+        'items' => [
+            [
+                'purchase_order_item_id' => $poItem->getKey(),
+                'qty' => (string) $poItem->qty,
+            ],
+        ],
+        ...$overrides,
+    ]);
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function purchasingInvoice(App\Domain\Purchasing\Models\GoodsReceipt $receipt, array $overrides = []): PurchaseInvoice
+{
+    $grItem = $receipt->items()->with(['item', 'unit'])->firstOrFail();
+    $unitPrice = app(App\Domain\Master\Services\UnitConversionService::class)
+        ->unitPriceFromBase($grItem->item, $grItem->unit, (string) $grItem->unit_cost_base);
+
+    return test()->invoices->create([
+        'doc_date' => test()->date,
+        'supplier_id' => $receipt->supplier_id,
+        'notes' => 'PI uji',
+        'items' => [
+            [
+                'goods_receipt_item_id' => $grItem->getKey(),
+                'qty' => (string) $grItem->qty,
+                'unit_price' => $unitPrice,
+            ],
+        ],
+        ...$overrides,
+    ]);
+}
+
+function purchasingJournalLine(Journal $journal, string $accountCode): App\Domain\Accounting\Models\JournalLine
+{
+    $accountId = accountByCode($accountCode)->getKey();
+
+    return $journal->lines()->where('account_id', $accountId)->firstOrFail();
 }

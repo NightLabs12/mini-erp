@@ -224,6 +224,131 @@ Tutup periode memvalidasi: periode sebelumnya closed, seluruh jurnal seimbang, t
 
 Laporan menerima `?from=YYYY-MM-DD&to=YYYY-MM-DD`; General Ledger juga menerima `?account_id=`. Default-nya bulan berjalan.
 
+## Purchasing
+
+Alur: Purchase Request -> Purchase Order -> Goods Receipt -> Purchase Invoice -> Supplier Payment (Payment Out). Semua dokumen memakai state machine `draft -> approved -> closed` dan dapat dibatalkan selama aturan SPEC 3.3 terpenuhi.
+
+| Metode | Path | Permission |
+| --- | --- | --- |
+| GET/POST | `/purchase-requests` | `purchase.purchase-request.view` / `create` |
+| GET/PUT/DELETE | `/purchase-requests/{id}` | `view` / `update` / `delete` |
+| POST | `/purchase-requests/{id}/approve` | `purchase.purchase-request.approve` |
+| POST | `/purchase-requests/{id}/disapprove` | `purchase.purchase-request.disapprove` |
+| POST | `/purchase-requests/{id}/close` | `purchase.purchase-request.close` |
+| POST | `/purchase-requests/{id}/convert` | `purchase.purchase-request.create` |
+| GET/POST | `/purchase-orders` | `purchase.purchase-order.view` / `create` |
+| GET/PUT/DELETE | `/purchase-orders/{id}` | `view` / `update` / `delete` |
+| POST | `/purchase-orders/{id}/approve` | `purchase.purchase-order.approve` |
+| POST | `/purchase-orders/{id}/disapprove` | `purchase.purchase-order.disapprove` |
+| POST | `/purchase-orders/{id}/close` | `purchase.purchase-order.close` |
+| GET | `/purchase-orders/{id}/print` | `purchase.purchase-order.print` |
+| GET/POST | `/goods-receipts` | `purchase.goods-receipt.view` / `create` |
+| GET/PUT/DELETE | `/goods-receipts/{id}` | `view` / `update` / `delete` |
+| POST | `/goods-receipts/{id}/approve` | `purchase.goods-receipt.approve` |
+| POST | `/goods-receipts/{id}/disapprove` | `purchase.goods-receipt.disapprove` |
+| GET/POST | `/purchase-invoices` | `purchase.purchase-invoice.view` / `create` |
+| GET/PUT/DELETE | `/purchase-invoices/{id}` | `view` / `update` / `delete` |
+| POST | `/purchase-invoices/{id}/approve` | `purchase.purchase-invoice.approve` |
+| POST | `/purchase-invoices/{id}/disapprove` | `purchase.purchase-invoice.disapprove` |
+| GET/POST | `/supplier-payments` | `purchase.supplier-payment.view` / `create` |
+| GET/PUT/DELETE | `/supplier-payments/{id}` | `view` / `update` / `delete` |
+| POST | `/supplier-payments/{id}/approve` | `purchase.supplier-payment.approve` |
+| POST | `/supplier-payments/{id}/disapprove` | `purchase.supplier-payment.disapprove` |
+| GET | `/reports/po-outstanding` | `report.po-outstanding.view` |
+| GET | `/reports/purchase-summary` | `report.purchase-summary.view` |
+| GET | `/reports/ap-outstanding` | `report.ap-outstanding.view` |
+| GET | `/reports/ap-aging` | `report.ap-aging.view` |
+
+### Purchase Order
+
+```bash
+curl -X POST http://localhost:8100/api/v1/purchase-orders \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "supplier_id": 1,
+    "warehouse_id": 1,
+    "expected_date": "2026-11-25",
+    "items": [
+      {"item_id": 1, "unit_id": 3, "qty": "10", "unit_price": "1440000", "discount_pct": "0"}
+    ]
+  }'
+```
+
+- `discount_pct` 0-100, `tax_rate` opsional (default dari setting `tax_rate`).
+- Subtotal, diskon, PPN, dan total dibulatkan 2 desimal HALF_UP.
+- `unit_price_base` adalah harga bersih per satuan base tanpa pajak; GR memakai nilai ini sebagai biaya.
+- PO otomatis `closed` saat seluruh qty base diterima. `POST /purchase-orders/{id}/close` menutup manual.
+- `GET /purchase-orders/{id}/print` mengembalikan PDF.
+
+### Goods Receipt
+
+```bash
+curl -X POST http://localhost:8100/api/v1/goods-receipts \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "purchase_order_id": 1,
+    "items": [
+      {"purchase_order_item_id": 1, "qty": "4"}
+    ]
+  }'
+```
+
+- Hanya dari PO `approved`.
+- Parsial diperbolehkan. Qty dibatasi sisa PO ditambah `gr_over_receipt_tolerance_pct` (setting, default 0).
+- Approve menerima stok lewat `StockService` pada biaya PO bersih per base dan membentuk jurnal `Dr Persediaan per kategori / Cr GR/IR`.
+- Approve idempoten. Disapprove membalik stok dan jurnal, serta menolak bila GR sudah ditagih, ada mutasi lanjutan, atau periode closed.
+
+### Purchase Invoice
+
+```bash
+curl -X POST http://localhost:8100/api/v1/purchase-invoices \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "supplier_id": 1,
+    "items": [
+      {"goods_receipt_item_id": 1, "qty": "10", "unit_price": "1440000"}
+    ]
+  }'
+```
+
+- Satu invoice dapat menagih beberapa GR dari supplier yang sama.
+- `due_date` dihitung dari `doc_date + suppliers.payment_term_days`.
+- Approve membentuk jurnal: `Dr GR/IR`, `Dr PPN Masukan`, `Dr/Cr Selisih Harga Pembelian`, `Cr Hutang Usaha`.
+- Qty invoice tidak boleh melebihi sisa GR yang belum ditagih.
+- Disapprove ditolak bila invoice sudah memiliki pembayaran.
+
+### Supplier Payment
+
+```bash
+curl -X POST http://localhost:8100/api/v1/supplier-payments \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "doc_date": "2026-11-20",
+    "supplier_id": 1,
+    "method": "bank",
+    "amount": "15984000.00",
+    "allocations": [
+      {"purchase_invoice_id": 1, "amount": "10000000.00"},
+      {"purchase_invoice_id": 2, "amount": "5984000.00"}
+    ]
+  }'
+```
+
+- `method` `cash` atau `bank`; `account_id` opsional, default dari `account_settings` (`cash_default`/`bank_default`).
+- Alokasi boleh parsial, tidak boleh melebihi sisa tagihan, dan total alokasi harus sama dengan `amount`.
+- Approve membentuk jurnal `Dr Hutang Usaha / Cr Kas atau Bank` dan menaikkan `paid_amount` invoice.
+- Disapprove membalik jurnal dan mengembalikan `paid_amount`.
+
+### Laporan purchasing
+
+- **PO Outstanding** (`?from=&to=&supplier_id=`): PO approved yang masih memiliki sisa diterima/ditagih, beserta nilai outstanding.
+- **Purchase Summary** (`?from=&to=&supplier_id=`): total invoice approved per supplier (jumlah invoice, subtotal, PPN, total).
+- **AP Outstanding** (`?as_of=&supplier_id=`): invoice approved dengan sisa tagihan, due date, dan hari keterlambatan.
+- **AP Aging** (`?as_of=&supplier_id=`): bucket current, 1-30, 31-60, 61-90, dan lebih dari 90 hari.
+
 ## Persediaan
 
 | Metode | Path | Permission |
@@ -340,4 +465,26 @@ Semua nilai qty memakai 4 desimal dan nilai uang 2 desimal. Baris pembalik ikut 
 | `DOCUMENT_NOT_APPROVED` | 409 | Disapprove dilakukan pada dokumen yang belum approved |
 | `DOCUMENT_STATE_INVALID` | 409 | Aksi tidak diizinkan dari status dokumen saat ini |
 | `DOCUMENT_EMPTY` | 422 | Dokumen tidak memiliki baris item |
+| `DOCUMENT_HAS_CHILDREN` | 409 | Disapprove ditolak karena ada dokumen turunan aktif |
+| `DOCUMENT_HAS_PAYMENTS` | 409 | Disapprove invoice yang sudah dibayar |
+| `PURCHASE_ORDER_NOT_APPROVED` | 409 | GR dibuat dari PO yang belum approved/closed |
+| `GR_QTY_EXCEEDS_REMAINING` | 422 | Qty GR melebihi sisa PO dan toleransi |
+| `PI_QTY_EXCEEDS_REMAINING` | 422 | Qty invoice melebihi sisa GR |
+| `GOODS_RECEIPT_NOT_APPROVED` | 409 | Invoice menagih GR yang belum approved |
+| `PURCHASE_INVOICE_SUPPLIER_MISMATCH` | 422 | Supplier invoice berbeda dari supplier GR |
+| `PAYMENT_ALLOCATION_INVALID` | 422 | Alokasi tidak valid |
+| `PAYMENT_ALLOCATION_REQUIRED` | 422 | Pembayaran tanpa alokasi |
+| `PAYMENT_ALLOCATION_DUPLICATE` | 422 | Invoice dialokasikan lebih dari sekali |
+| `PAYMENT_AMOUNT_MISMATCH` | 422 | Amount tidak sama dengan total alokasi |
+| `PAYMENT_EXCEEDS_REMAINING` | 422 | Alokasi melebihi sisa tagihan |
+| `PAYMENT_INVOICE_NOT_FOUND` | 422 | Invoice alokasi tidak ditemukan |
+| `PAYMENT_INVOICE_NOT_APPROVED` | 409 | Invoice alokasi belum approved |
+| `PAYMENT_SUPPLIER_MISMATCH` | 422 | Invoice bukan milik supplier pembayaran |
+| `PAYMENT_METHOD_INVALID` | 422 | Metode bukan cash/bank |
+| `SUPPLIER_REQUIRED` | 422 | Konversi PR tanpa supplier |
+| `PURCHASE_PRICE_INVALID` | 422 | Harga satuan negatif |
+| `PURCHASE_DISCOUNT_INVALID` | 422 | Diskon di luar 0-100 |
+| `TAX_RATE_INVALID` | 422 | Tarif PPN di luar 0-100 |
+| `GOODS_RECEIPT_LINE_INVALID` | 422 | Baris GR tidak terhubung ke PO |
+| `PURCHASE_INVOICE_LINE_INVALID` | 422 | Baris invoice tidak terhubung ke GR |
 | `SERVER_ERROR` | 500 | Kesalahan tak terduga |

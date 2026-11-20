@@ -43,6 +43,12 @@ final class SettingService
             'group' => 'inventory',
             'description' => 'Izinkan stok keluar melebihi saldo tersedia.',
         ],
+        'gr_over_receipt_tolerance_pct' => [
+            'value' => '0',
+            'type' => 'decimal',
+            'group' => 'inventory',
+            'description' => 'Toleransi persen qty goods receipt melebihi sisa purchase order.',
+        ],
         'require_no_draft_on_close' => [
             'value' => 'true',
             'type' => 'boolean',

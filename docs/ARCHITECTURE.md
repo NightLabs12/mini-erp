@@ -290,6 +290,86 @@ Execution Time: 5.196 ms
 
 Catatan: CTE `opening` memilih 46% baris (sebelum Desember), sehingga planner memakai seq scan + hash join; itu pilihan yang benar untuk selektivitas tersebut. Slice periode (338 baris) memakai `journal_lines_account_date_idx`. Untuk akun dengan riwayat panjang dan rentang sempit, index yang sama dipakai langsung.
 
+## Modul Purchasing (Fase 5)
+
+```mermaid
+flowchart LR
+    PR["Purchase Request"] -->|convert| PO["Purchase Order"]
+    PO -->|parsial / penuh| GR["Goods Receipt"]
+    GR -->|satu / beberapa| PI["Purchase Invoice"]
+    PI -->|alokasi| PAY["Supplier Payment (Out)"]
+    GR --> SS["StockService"]
+    GR --> JS["JournalService"]
+    PI --> JS
+    PAY --> JS
+    PO --> REP["PO Outstanding / Purchase Summary"]
+    PI --> REP
+    PI --> AP["AP Outstanding / AP Aging"]
+```
+
+### State machine dan pelacakan qty
+
+- Semua dokumen memakai status `draft -> approved -> closed`; `cancelled` hanya dari draft.
+- `purchase_order_items.received_qty_base` dan `invoiced_qty_base` adalah akumulasi qty base. `goods_receipt_items.invoiced_qty_base` melacak sisa per GR.
+- PO otomatis `closed` saat seluruh baris diterima penuh. `closed_manually` membedakan penutupan manual dari otomatis, sehingga disapprove GR hanya membuka kembali PO yang ditutup otomatis.
+- Disapprove ditolak bila ada dokumen turunan aktif:
+  - PR tidak boleh disapprove bila sudah dikonversi menjadi PO aktif.
+  - PO tidak boleh disapprove bila masih ada GR draft/approved.
+  - GR tidak boleh disapprove bila sudah ditagih PI draft/approved.
+  - PI tidak boleh disapprove bila sudah memiliki pembayaran.
+
+### Perhitungan PO
+
+- `qty_base` dihitung `UnitConversionService::toBase()`.
+- `unit_price_base` adalah harga bersih per satuan base tanpa pajak:
+  `unit_price * (1 - discount_pct / 100)` dikonversi ke base dan dibulatkan 4 desimal.
+- `line_total = round(qty_base * unit_price_base, 2)`.
+- Subtotal = jumlah nilai bruto per baris; diskon = selisih bruto dan `line_total`.
+- PPN = `round((subtotal - diskon) * tax_rate / 100, 2)`; total = basis + PPN. Semua uang 2 desimal HALF_UP.
+- `unit_price_base` menjadi biaya GR sehingga nilai persediaan dan GR/IR konsisten dengan PO bersih.
+
+### Goods Receipt
+
+- Hanya dari PO `approved`.
+- Parsial diperbolehkan. Batas qty = sisa PO `(qty_base - received_qty_base)` ditambah `gr_over_receipt_tolerance_pct` (setting, default 0). Validasi diulang di bawah lock saat approve.
+- Approve:
+  1. lock header GR -> periode -> header PO -> baris PO -> saldo stok;
+  2. `StockService::receive()` per baris pada `unit_price_base` PO;
+  3. jurnal `Dr Persediaan per kategori item / Cr GR/IR` lewat `JournalService`;
+  4. tambah `received_qty_base` dan sesuaikan status PO.
+- Approve idempoten. Disapprove membalik stok dan jurnal, mengurangi `received_qty_base`, dan menolak bila periode closed atau ada mutasi lanjutan.
+
+### Purchase Invoice
+
+- Satu PI dapat menagih beberapa GR dari supplier yang sama.
+- Qty per baris dibatasi sisa GR (`qty_base - invoiced_qty_base`). `invoiced_qty_base` pada GR dan PO dinaikkan saat approve.
+- `due_date = doc_date + suppliers.payment_term_days`.
+- Jurnal:
+  - `Dr GR/IR` sebesar `qty_base * gr_unit_cost` yang ditagih;
+  - `Dr PPN Masukan` sebesar `tax_amount`;
+  - `Dr/Cr Selisih Harga Pembelian` sebesar `subtotal - nilai GR`;
+  - `Cr Hutang Usaha` sebesar total invoice.
+- Disapprove membalik jurnal dan mengurangi `invoiced_qty_base`; ditolak bila sudah ada pembayaran.
+
+### Payment Out
+
+- Alokasi ke banyak invoice, boleh parsial. Total alokasi wajib sama dengan `amount`, dan setiap alokasi tidak boleh melebihi `total - paid_amount`.
+- `method=cash|bank`; akun diambil dari `account_id` eksplisit atau `account_settings` (`cash_default`/`bank_default`).
+- Approve: lock payment -> periode -> invoice (urut id) -> jurnal `Dr Hutang Usaha / Cr Kas atau Bank` -> naikkan `paid_amount`.
+- Disapprove membalik jurnal dan mengembalikan `paid_amount`.
+
+### Laporan dan cetak
+
+- **PO Outstanding**: PO approved yang masih memiliki sisa diterima/ditagih, nilai outstanding = sisa qty * `unit_price_base`.
+- **Purchase Summary**: agregasi invoice approved per supplier (jumlah, subtotal, PPN, total).
+- **AP Outstanding**: invoice approved dengan `total > paid_amount`, due date, dan hari keterlambatan (0 bila belum jatuh tempo).
+- **AP Aging**: bucket current, 1-30, 31-60, 61-90, >90 berdasarkan due date.
+- **Cetak PO**: DomPDF dari view `purchasing.purchase-order`; nama berkas memakai `doc_no` yang disanitasi karena mengandung `/`.
+
+### Rekonsiliasi
+
+`ReconciliationService` otomatis memeriksa AP (`purchase_invoices` approved) dan Persediaan (`stock_balances`) karena tabelnya sudah ada. Tutup periode akan gagal bila saldo GL Hutang Usaha/Persediaan tidak sama dengan sumber dokumen.
+
 ## Modul Persediaan (Fase 4)
 
 ```mermaid

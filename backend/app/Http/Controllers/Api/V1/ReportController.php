@@ -7,10 +7,13 @@ namespace App\Http\Controllers\Api\V1;
 use App\Domain\Accounting\Services\GeneralLedgerService;
 use App\Domain\Accounting\Services\TrialBalanceService;
 use App\Domain\Inventory\Services\StockReportService;
+use App\Domain\Purchasing\Services\PurchaseReportService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Accounting\FinancialReportRequest;
 use App\Http\Requests\Inventory\StockCardRequest;
 use App\Http\Requests\Inventory\StockReportRequest;
+use App\Http\Requests\Purchasing\ApReportRequest;
+use App\Http\Requests\Purchasing\PurchaseReportRequest;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -91,5 +94,55 @@ final class ReportController extends Controller
         );
 
         return response()->json(['data' => $report]);
+    }
+
+    public function poOutstanding(
+        PurchaseReportRequest $request,
+        PurchaseReportService $reports,
+    ): JsonResponse {
+        $data = $request->validated();
+
+        return response()->json(['data' => $reports->poOutstanding(
+            isset($data['supplier_id']) ? (int) $data['supplier_id'] : null,
+            (string) $data['from'],
+            (string) $data['to'],
+        )]);
+    }
+
+    public function purchaseSummary(
+        PurchaseReportRequest $request,
+        PurchaseReportService $reports,
+    ): JsonResponse {
+        $data = $request->validated();
+
+        return response()->json(['data' => $reports->purchaseSummary(
+            isset($data['supplier_id']) ? (int) $data['supplier_id'] : null,
+            (string) $data['from'],
+            (string) $data['to'],
+        )]);
+    }
+
+    public function apOutstanding(
+        ApReportRequest $request,
+        PurchaseReportService $reports,
+    ): JsonResponse {
+        $data = $request->validated();
+
+        return response()->json(['data' => $reports->apOutstanding(
+            isset($data['supplier_id']) ? (int) $data['supplier_id'] : null,
+            (string) $data['as_of'],
+        )]);
+    }
+
+    public function apAging(
+        ApReportRequest $request,
+        PurchaseReportService $reports,
+    ): JsonResponse {
+        $data = $request->validated();
+
+        return response()->json(['data' => $reports->apAging(
+            isset($data['supplier_id']) ? (int) $data['supplier_id'] : null,
+            (string) $data['as_of'],
+        )]);
     }
 }
