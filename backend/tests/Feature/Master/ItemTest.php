@@ -212,7 +212,7 @@ it('mengaktifkan ITEM_IN_USE begitu tabel dokumen tersedia', function (): void {
     ]);
 
     $item = masterItem($this->pcs, ['category_id' => $this->category->getKey()]);
-    addConversion($item, $this->dus, '144');
+    $conversion = addConversion($item, $this->dus, '144');
 
     DB::table('dummy_document_items')->insert(['item_id' => $item->getKey()]);
 
@@ -226,6 +226,18 @@ it('mengaktifkan ITEM_IN_USE begitu tabel dokumen tersedia', function (): void {
         ->putJson("/api/v1/items/{$item->getKey()}", [
             'conversions' => [['unit_id' => $this->dus->getKey(), 'factor_to_base' => 120]],
         ])
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'ITEM_IN_USE');
+
+    $this->withHeaders($this->headers)
+        ->putJson("/api/v1/items/{$item->getKey()}/unit-conversions/{$conversion->getKey()}", [
+            'factor_to_base' => 120,
+        ])
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'ITEM_IN_USE');
+
+    $this->withHeaders($this->headers)
+        ->deleteJson("/api/v1/items/{$item->getKey()}/unit-conversions/{$conversion->getKey()}")
         ->assertStatus(409)
         ->assertJsonPath('code', 'ITEM_IN_USE');
 });

@@ -6,11 +6,13 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Master\Models\Item;
 use App\Domain\Master\Models\ItemUnitConversion;
+use App\Domain\Master\Services\MasterUsageGuard;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Master\ItemUnitConversionRequest;
 use App\Http\Resources\ApiCollection;
 use App\Http\Resources\ItemUnitConversionResource;
+use App\Support\Math\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -24,6 +26,8 @@ use Illuminate\Http\Response;
  */
 final class ItemUnitConversionController extends Controller
 {
+    public function __construct(private readonly MasterUsageGuard $usageGuard) {}
+
     public function index(Request $request, Item $item): ApiCollection
     {
         $this->authorize('view', $item);
@@ -59,7 +63,17 @@ final class ItemUnitConversionController extends Controller
         $this->authorize('update', $item);
         $this->ensureBelongsTo($item, $conversion);
 
-        $conversion->update($request->validated());
+        $data = $request->validated();
+
+        if (array_key_exists('factor_to_base', $data)
+            && Decimal::compare((string) $conversion->factor_to_base, (string) $data['factor_to_base']) !== 0) {
+            $this->usageGuard->assertNotUsedByDocuments(
+                $item,
+                'Faktor konversi tidak dapat diubah karena item sudah dipakai dokumen.',
+            );
+        }
+
+        $conversion->update($data);
 
         return new ItemUnitConversionResource($conversion->fresh(['unit']) ?? $conversion);
     }
@@ -68,6 +82,11 @@ final class ItemUnitConversionController extends Controller
     {
         $this->authorize('update', $item);
         $this->ensureBelongsTo($item, $conversion);
+
+        $this->usageGuard->assertNotUsedByDocuments(
+            $item,
+            'Konversi tidak dapat dihapus karena item sudah dipakai dokumen.',
+        );
 
         $conversion->delete();
 

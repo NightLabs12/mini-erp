@@ -138,18 +138,30 @@ final class ItemController extends Controller
             static fn ($conversion): int => (int) $conversion->unit_id,
         );
 
+        $kept = [];
+
         foreach ($conversions as $row) {
-            if (! is_array($row) || ! isset($row['unit_id'], $row['factor_to_base'])) {
+            if (! is_array($row) || ! isset($row['unit_id'])) {
                 continue;
             }
 
-            $current = $existing->get((int) $row['unit_id']);
+            $unitId = (int) $row['unit_id'];
+            $kept[] = $unitId;
+            $current = $existing->get($unitId);
 
-            if ($current === null) {
+            if ($current === null || ! isset($row['factor_to_base'])) {
                 continue;
             }
 
             if (Decimal::compare((string) $current->factor_to_base, (string) $row['factor_to_base']) !== 0) {
+                return true;
+            }
+        }
+
+        // Menghapus definisi satuan juga membuat dokumen lama tidak dapat
+        // direproduksi, jadi diperlakukan sebagai perubahan struktural.
+        foreach ($existing->keys() as $unitId) {
+            if (! in_array((int) $unitId, $kept, true)) {
                 return true;
             }
         }

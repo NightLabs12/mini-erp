@@ -42,6 +42,8 @@ final class JournalResource extends ApiResource
             'lines' => $this->whenLoaded(
                 'lines',
                 fn (): array => $this->journal->lines
+                    ->sortBy([['line_no', 'asc'], ['id', 'asc']])
+                    ->values()
                     ->map(static fn (JournalLine $line): array => (new JournalLineResource($line))->resolve())
                     ->all(),
             ),

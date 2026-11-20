@@ -118,6 +118,8 @@ final class JournalController extends Controller
     private function linesPayload(Journal $journal): array
     {
         return $journal->lines()
+            ->orderBy('line_no')
+            ->orderBy('id')
             ->get()
             ->map(static fn (JournalLine $line): array => [
                 'account_id' => $line->account_id,
