@@ -40,6 +40,8 @@ jobs:
       DB_DATABASE: mini_erp_test
       DB_USERNAME: mini_erp
       DB_PASSWORD: mini_erp_secret
+      # Default CI: 50 proses paralel untuk test konkurensi penomoran.
+      SEQUENCE_CONCURRENCY: 50
 
     steps:
       - uses: actions/checkout@v5
@@ -114,7 +116,8 @@ jobs:
     # Dockerfile, bukan kode dari bind mount.
     env:
       COMPOSE_FILE: docker-compose.yml
-      APP_PORT: 8000
+      COMPOSE_PROJECT_NAME: minierp-dev
+      APP_PORT: 8100
 
     steps:
       - uses: actions/checkout@v5
@@ -147,7 +150,7 @@ jobs:
 
           code="000"
           for attempt in $(seq 1 30); do
-            code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://127.0.0.1:8000/api/v1/health || true)
+            code=$(curl -sS -o /tmp/health.json -w '%{http_code}' http://127.0.0.1:8100/api/v1/health || true)
             if [ "$code" = "200" ]; then
               break
             fi

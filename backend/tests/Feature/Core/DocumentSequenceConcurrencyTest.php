@@ -5,21 +5,26 @@ declare(strict_types=1);
 use Symfony\Component\Process\Process;
 
 /**
- * Penomoran harus tetap unik dan berurutan walau 50 proses meminta nomor
+ * Penomoran harus tetap unik dan berurutan walau banyak proses meminta nomor
  * pada saat yang sama. Setiap proses adalah aplikasi Laravel terpisah yang
  * menyentuh database yang sama, sehingga lockForUpdate benar-benar diuji.
+ *
+ * Jumlah proses dibaca dari SEQUENCE_CONCURRENCY: 50 di CI, lebih rendah di
+ * VPS bersama. Assertion tetap menuntut jumlah nomor unik yang sama dengan
+ * jumlah proses dan rentang yang berurutan tanpa celah.
  */
-it('menghasilkan 50 nomor unik dan berurutan dari proses paralel', function (): void {
+it('menghasilkan nomor unik dan berurutan dari proses paralel', function (): void {
     $type = 'PO';
     $date = '2099-12-15';
     $worker = base_path('tests/Support/sequence-worker.php');
+    $workers = max(1, (int) (getenv('SEQUENCE_CONCURRENCY') ?: 50));
 
     expect($worker)->toBeFile();
 
     $environment = sequenceWorkerEnvironment();
     $processes = [];
 
-    for ($index = 0; $index < 50; $index++) {
+    for ($index = 0; $index < $workers; $index++) {
         $process = new Process([PHP_BINARY, $worker, $type, $date], base_path(), $environment);
         $process->setTimeout(180);
         $process->start();
@@ -39,7 +44,7 @@ it('menghasilkan 50 nomor unik dan berurutan dari proses paralel', function (): 
         $numbers[] = trim($process->getOutput());
     }
 
-    expect(array_unique($numbers))->toHaveCount(50);
+    expect(array_unique($numbers))->toHaveCount($workers);
 
     foreach ($numbers as $number) {
         expect($number)->toMatch('/^PO\/2099\/12\/\d{4}$/');
@@ -53,7 +58,7 @@ it('menghasilkan 50 nomor unik dan berurutan dari proses paralel', function (): 
     sort($sequence);
 
     expect($sequence[0])->toBeGreaterThan(0)
-        ->and($sequence[49] - $sequence[0] + 1)->toBe(50);
+        ->and($sequence[$workers - 1] - $sequence[0] + 1)->toBe($workers);
 });
 
 /**

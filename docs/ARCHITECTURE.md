@@ -303,7 +303,7 @@ Catatan: CTE `opening` memilih 46% baris (sebelum Desember), sehingga planner me
 
 ```mermaid
 flowchart LR
-    subgraph Compose["docker compose (mini-erp)"]
+    subgraph Compose["docker compose (minierp-dev)"]
         PG["postgres:16-alpine<br/>volume pgdata"]
         APP["app: php:8.3-fpm-alpine<br/>kode + vendor dari Dockerfile"]
         NG["nginx:1.27-alpine<br/>public/ + default.conf"]
@@ -313,6 +313,18 @@ flowchart LR
     APP -->|"pgsql"| PG
     ND -.->|"proxy /api"| NG
 ```
+
+### Isolasi VPS dan batas sumber daya
+
+Proyek Compose memakai nama `minierp-dev`. Semua target Makefile menjalankan `docker compose -p minierp-dev`, sehingga container, network, dan volume proyek lain (Coolify, Minecraft, database aplikasi lain) tidak tersentuh. Semua port dipublikasikan ke loopback dan dapat diubah lewat `.env` root:
+
+| Layanan | Port host default | Variabel |
+| --- | --- | --- |
+| API/nginx | `127.0.0.1:8100` | `APP_PORT` |
+| PostgreSQL | `127.0.0.1:5433` | `POSTGRES_PORT` |
+| Vite | `127.0.0.1:5173` | `FRONTEND_PORT` |
+
+Batas memori dan CPU dipasang di Compose: postgres `768m`/`0.5` CPU, app `768m`/`1.0` CPU, nginx `128m`, node `768m`. Total batas sekitar 2,4 GB, di bawah pagu 3 GB. Layanan `node` berada di profil `frontend`; `make demo` dan `make smoke` hanya menyalakan postgres, app, dan nginx. Nyalakan Vite secara eksplisit dengan `make fe-up`.
 
 Dua cara image dipakai:
 
@@ -342,7 +354,7 @@ Karena job ini tidak memuat `docker-compose.override.yml`, image yang diuji adal
 
 Layanan `node` sengaja tidak dinyalakan. Endpoint health hanya bergantung pada postgres, php-fpm, dan nginx; frontend sudah diuji job `frontend` (ESLint, typecheck, build). Akibatnya job smoke tidak menarik image Node, tidak menjalankan `npm ci`, dan tidak bergantung pada registry npm.
 
-Konsekuensi yang perlu diketahui: `make smoke` dan job CI tidak lagi memvalidasi integrasi Vite di dalam Compose. Perubahan pada `frontend/docker-entrypoint.sh` atau konfigurasi proxy hanya teruji saat `make demo` dijalankan manual.
+Konsekuensi yang perlu diketahui: `make smoke` dan job CI tidak memvalidasi integrasi Vite di dalam Compose. Perubahan pada `frontend/docker-entrypoint.sh` atau konfigurasi proxy diuji terpisah lewat `make fe-up`/`make fe-build`.
 
 ## Kualitas
 
@@ -355,4 +367,4 @@ Konsekuensi yang perlu diketahui: `make smoke` dan job CI tidak lagi memvalidasi
 
 - Belum ada endpoint domain, login, maupun seeder data.
 - ERD dan ADR ditulis saat modul terkait mulai diimplementasikan, agar isinya sesuai kode yang ada.
-- Docker tidak tersedia di mesin pengembangan ini, sehingga stack Compose tidak dijalankan manual di sana. Kebenarannya dijaga oleh job `docker-smoke`; berkas Compose dan workflow sudah divalidasi sintaksnya secara lokal.
+- Stack Compose dijalankan di VPS bersama dengan batas sumber daya dan port loopback; kebenarannya juga dijaga oleh job `docker-smoke`.

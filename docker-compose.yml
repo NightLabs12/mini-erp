@@ -1,4 +1,4 @@
-name: mini-erp
+name: minierp-dev
 
 services:
   postgres:
@@ -8,10 +8,12 @@ services:
       POSTGRES_USER: ${DB_USERNAME:-mini_erp}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-mini_erp_secret}
     ports:
-      - '${POSTGRES_PORT:-5433}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5433}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    mem_limit: 768m
+    cpus: 0.5
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
       interval: 5s
@@ -33,9 +35,12 @@ services:
       DB_USERNAME: ${DB_USERNAME:-mini_erp}
       DB_PASSWORD: ${DB_PASSWORD:-mini_erp_secret}
       DEMO_MODE: ${DEMO_MODE:-true}
+      SEQUENCE_CONCURRENCY: ${SEQUENCE_CONCURRENCY:-50}
     depends_on:
       postgres:
         condition: service_healthy
+    mem_limit: 768m
+    cpus: 1.0
     healthcheck:
       test: ['CMD-SHELL', 'php -r "exit(@fsockopen(''127.0.0.1'', 9000) ? 0 : 1);"']
       interval: 10s
@@ -46,13 +51,14 @@ services:
   nginx:
     image: nginx:1.27-alpine
     ports:
-      - '${APP_PORT:-8000}:80'
+      - '127.0.0.1:${APP_PORT:-8100}:80'
     volumes:
       - ./backend/public:/var/www/html/public:ro
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       app:
         condition: service_healthy
+    mem_limit: 128m
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1/up || exit 1']
       interval: 10s
@@ -60,8 +66,11 @@ services:
       retries: 6
       start_period: 15s
 
+  # Vite dev server sengaja berada di profil terpisah. `make demo` dan
+  # `make smoke` tidak menyalakannya; jalankan `make fe-up` bila dibutuhkan.
   node:
     image: node:22-alpine
+    profiles: ['frontend']
     working_dir: /app
     volumes:
       - ./frontend:/app
@@ -69,8 +78,9 @@ services:
     environment:
       VITE_API_PROXY_TARGET: http://nginx:80
     ports:
-      - '${FRONTEND_PORT:-5173}:5173'
+      - '127.0.0.1:${FRONTEND_PORT:-5173}:5173'
     command: sh /app/docker-entrypoint.sh
+    mem_limit: 768m
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:5173/ || exit 1']
       interval: 10s

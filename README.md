@@ -107,7 +107,7 @@ composer install
 cp .env.example .env        # Windows: Copy-Item .env.example .env
 php artisan key:generate
 php artisan migrate
-php artisan serve           # http://localhost:8000
+php artisan serve --port=8100 # http://localhost:8100
 ```
 
 Frontend, di terminal lain:
@@ -118,7 +118,7 @@ npm install
 npm run dev                 # http://localhost:5173
 ```
 
-Frontend memakai proxy Vite: browser memanggil `/api/v1` dan Vite meneruskan ke `http://localhost:8000`. Ubah target dengan `VITE_API_PROXY_TARGET`.
+Frontend memakai proxy Vite: browser memanggil `/api/v1` dan Vite meneruskan ke `http://localhost:8100`. Ubah target dengan `VITE_API_PROXY_TARGET`.
 
 Test dan lint juga berjalan native:
 
@@ -135,16 +135,16 @@ Prasyarat: Docker Desktop dengan Compose v2, serta `make` (Linux, macOS, WSL).
 make demo
 ```
 
-Perintah ini membangun image, menyalakan empat layanan, menunggu semuanya healthy, menjalankan migrasi, lalu mengisi data demo.
+Perintah ini membangun image, menyalakan tiga layanan backend (postgres, app, nginx), menunggu semuanya healthy, menjalankan migrasi, lalu mengisi data demo. Container `node` sengaja tidak ikut; nyalakan terpisah dengan `make fe-up` bila ingin menjalankan Vite.
 
 | Layanan | URL |
 | --- | --- |
-| API | http://localhost:8000/api/v1/health |
-| OpenAPI | http://localhost:8000/docs/api |
-| Frontend | http://localhost:5173 |
+| API | http://localhost:8100/api/v1/health |
+| OpenAPI | http://localhost:8100/docs/api |
+| Frontend (opsional, `make fe-up`) | http://localhost:5173 |
 | PostgreSQL | `localhost:5433`, database `mini_erp` |
 
-Port dapat diubah lewat variabel lingkungan, misalnya `APP_PORT=8080 make up`. Kredensial database default: `mini_erp` / `mini_erp_secret`.
+Semua port dipublikasikan hanya ke `127.0.0.1` dan dapat diubah lewat `.env` di root repo: `APP_PORT` (default 8100), `FRONTEND_PORT` (5173), dan `POSTGRES_PORT` (5433). Proyek Compose memakai nama `minierp-dev`, sehingga aman berdampingan dengan Coolify dan layanan lain di VPS. Kredensial database default: `mini_erp` / `mini_erp_secret`.
 
 Image `app` sudah berisi kode dan `vendor` hasil build. Untuk pengembangan lokal, `docker-compose.override.yml` menambahkan bind mount `./backend` sehingga perubahan kode langsung terpakai tanpa rebuild. Compose memuat berkas itu otomatis selama tidak ada `-f` yang diberikan.
 
@@ -155,12 +155,13 @@ Perintah lain:
 | Perintah | Fungsi |
 | --- | --- |
 | `make up` | Nyalakan layanan tanpa migrasi |
-| `make down` | Hentikan container |
+| `make down` | Hentikan container proyek ini |
 | `make migrate` | Jalankan migrasi |
 | `make seed` | Isi data demo |
 | `make demo-reset` | Bangun ulang dataset demo dari nol |
 | `make test` | Test backend (Pest) di container |
 | `make lint` | Pint, Larastan, ESLint, typecheck |
+| `make fe-up` | Nyalakan Vite dev server lewat profil `frontend` (opsional) |
 | `make smoke` | Tiru job CI `docker-smoke`: postgres + app + nginx tanpa bind mount, lalu bersihkan |
 | `make logs` | Ikuti log semua layanan |
 | `make sh` | Shell container app |
@@ -168,13 +169,13 @@ Perintah lain:
 
 ### Verifikasi Docker di CI
 
-Docker tidak dijalankan di mesin pengembangan, jadi kebenaran stack container dijaga oleh job `docker-smoke` di `.github/workflows/ci.yml`. Setiap push dan pull request menjalankan:
+Stack container dijalankan manual lewat `make demo` dan juga diverifikasi otomatis oleh job `docker-smoke` di `.github/workflows/ci.yml`. Setiap push dan pull request menjalankan:
 
 1. `docker compose config --quiet` untuk memvalidasi berkas Compose.
 2. `docker compose build` untuk membangun image dari `docker/php/Dockerfile`.
 3. `docker compose up -d --wait --wait-timeout 180 postgres app nginx` untuk menyalakan ketiga layanan backend dan menunggu semuanya healthy dalam tiga menit.
 4. `docker compose exec -T app php artisan migrate --force`.
-5. `curl` ke `http://127.0.0.1:8000/api/v1/health`, memastikan HTTP 200 dan `checks.database` bernilai `ok`.
+5. `curl` ke `http://127.0.0.1:8100/api/v1/health`, memastikan HTTP 200 dan `checks.database` bernilai `ok`.
 6. `docker compose logs` untuk postgres, app, dan nginx bila ada langkah yang gagal, lalu `docker compose down -v` di akhir.
 
 Job ini sengaja hanya memakai `docker-compose.yml` (tanpa override), sehingga yang diuji adalah image hasil Dockerfile, bukan kode dari bind mount.
@@ -203,7 +204,7 @@ Dibuat oleh `DemoUserSeeder` saat `make demo` atau `php artisan db:seed`.
 Password diambil dari `DEMO_PASSWORD` (default `password`).
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
+curl -X POST http://localhost:8100/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@demo.test","password":"password"}'
 ```
@@ -250,7 +251,7 @@ Gagal:
 
 List endpoint menerima `?search=`, `?filter[kolom]=nilai`, `?filter[kolom][gte]=nilai`, `?sort=kolom` atau `?sort=-kolom`, `?page=`, dan `?per_page=` (maksimum 100). Hanya kolom yang diizinkan per resource yang dipakai.
 
-Daftar endpoint, contoh `curl`, dan kode error ada di [`docs/API.md`](docs/API.md). Dokumentasi interaktif di `http://localhost:8000/docs/api`.
+Daftar endpoint, contoh `curl`, dan kode error ada di [`docs/API.md`](docs/API.md). Dokumentasi interaktif di `http://localhost:8100/docs/api`.
 
 ### Permission
 
@@ -273,6 +274,8 @@ Backend menegakkan lewat Policy (`UserPolicy`, `AuditLogPolicy`) dan middleware 
 make test     # Pest di container, memakai database mini_erp_test
 make lint     # Pint --test, Larastan level 6, ESLint, tsc
 ```
+
+Test konkurensi penomoran membaca `SEQUENCE_CONCURRENCY` (default 50). Di VPS bersama, set nilainya lebih rendah, misalnya `SEQUENCE_CONCURRENCY=12` di `.env` root, tanpa mengubah assertion keunikan dan urutan nomor.
 
 Di Docker, `mini_erp_test` dibuat otomatis oleh `docker/postgres/init`. Untuk pengembangan native, buat sekali dengan `createdb mini_erp_test` atau lewat SQL pada bagian [Menjalankan](#menjalankan).
 

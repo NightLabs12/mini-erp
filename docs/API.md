@@ -35,7 +35,7 @@ Memakai bearer token Sanctum. Masa berlaku token mengikuti `SANCTUM_EXPIRATION` 
 ### POST /auth/login
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
+curl -X POST http://localhost:8100/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@demo.test","password":"password","device_name":"laptop"}'
 ```
@@ -121,7 +121,7 @@ Semua resource memakai pola yang sama: CRUD RESTful, pagination (`?page`, `?per_
 ### Item dan konversi satuan
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/items \
+curl -X POST http://localhost:8100/api/v1/items \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -150,7 +150,7 @@ Konversi juga bisa dikelola satu per satu lewat `/items/{item}/unit-conversions`
 ### Harga jual dan lookup
 
 ```bash
-curl "http://localhost:8000/api/v1/selling-prices/lookup?item_id=1&unit_id=3&customer_id=2&date=2026-11-20" \
+curl "http://localhost:8100/api/v1/selling-prices/lookup?item_id=1&unit_id=3&customer_id=2&date=2026-11-20" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -208,7 +208,7 @@ Rentang `selling_prices` untuk kombinasi item, satuan, dan customer yang sama ti
 Jurnal manual dibuat sebagai `draft` tanpa nomor. Approve memvalidasi keseimbangan dan periode open, lalu memberi nomor `JV/YYYY/MM/0000`. Reverse membuat jurnal baru dengan debit/credit ditukar dan menandai jurnal asal `reversed`.
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/journals \
+curl -X POST http://localhost:8100/api/v1/journals \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{
     "journal_date": "2026-11-20",
