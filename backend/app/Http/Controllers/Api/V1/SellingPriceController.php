@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Master\Models\SellingPrice;
 use App\Domain\Master\Services\MasterUsageGuard;
+use App\Domain\Master\Services\SellingPricePeriodGuard;
 use App\Domain\Master\Services\SellingPriceResolver;
 use App\Domain\Master\Services\UnitConversionService;
 use App\Exceptions\ApiException;
@@ -15,9 +16,11 @@ use App\Http\Requests\Master\SellingPriceLookupRequest;
 use App\Http\Requests\Master\SellingPriceRequest;
 use App\Http\Resources\ApiCollection;
 use App\Http\Resources\SellingPriceResource;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 final class SellingPriceController extends Controller
 {
@@ -26,6 +29,7 @@ final class SellingPriceController extends Controller
     public function __construct(
         private readonly MasterUsageGuard $usageGuard,
         private readonly SellingPriceResolver $resolver,
+        private readonly SellingPricePeriodGuard $periods,
         private readonly UnitConversionService $conversions,
     ) {}
 
@@ -46,7 +50,23 @@ final class SellingPriceController extends Controller
     {
         $this->authorize('create', SellingPrice::class);
 
-        $price = SellingPrice::query()->create($request->validated());
+        $data = $request->validated();
+
+        try {
+            $price = DB::transaction(function () use ($data): SellingPrice {
+                $this->periods->assertNoOverlap(
+                    (int) $data['item_id'],
+                    (int) $data['unit_id'],
+                    isset($data['customer_id']) ? (int) $data['customer_id'] : null,
+                    $data['valid_from'] ?? null,
+                    $data['valid_to'] ?? null,
+                );
+
+                return SellingPrice::query()->create($data);
+            });
+        } catch (QueryException $exception) {
+            throw $this->overlapOrRethrow($exception);
+        }
 
         return (new SellingPriceResource(($price->fresh() ?? $price)->load('unit')))->response()->setStatusCode(201);
     }
@@ -62,7 +82,26 @@ final class SellingPriceController extends Controller
     {
         $this->authorize('update', $sellingPrice);
 
-        $sellingPrice->update($request->validated());
+        $data = $request->validated();
+
+        try {
+            DB::transaction(function () use ($data, $sellingPrice): void {
+                $this->periods->assertNoOverlap(
+                    (int) ($data['item_id'] ?? $sellingPrice->item_id),
+                    (int) ($data['unit_id'] ?? $sellingPrice->unit_id),
+                    array_key_exists('customer_id', $data)
+                        ? ($data['customer_id'] === null ? null : (int) $data['customer_id'])
+                        : $sellingPrice->customer_id,
+                    array_key_exists('valid_from', $data) ? $data['valid_from'] : $sellingPrice->valid_from,
+                    array_key_exists('valid_to', $data) ? $data['valid_to'] : $sellingPrice->valid_to,
+                    (int) $sellingPrice->getKey(),
+                );
+
+                $sellingPrice->update($data);
+            });
+        } catch (QueryException $exception) {
+            throw $this->overlapOrRethrow($exception);
+        }
 
         return new SellingPriceResource(($sellingPrice->fresh() ?? $sellingPrice)->load('unit'));
     }
@@ -83,6 +122,19 @@ final class SellingPriceController extends Controller
         $sellingPrice->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * Constraint exclusion PostgreSQL menangkap balapan antar-request. Ubah
+     * pelanggarannya menjadi 422 yang sama dengan validasi aplikasi.
+     */
+    private function overlapOrRethrow(QueryException $exception): ApiException
+    {
+        if ($this->periods->isOverlapViolation($exception)) {
+            return $this->periods->overlapError();
+        }
+
+        throw $exception;
     }
 
     /**

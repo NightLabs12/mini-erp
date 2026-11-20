@@ -35,6 +35,7 @@ final class UnitRequest extends FormRequest
                 Rule::unique('units', 'code')->whereNull('deleted_at')->ignore($unitId),
             ],
             'name' => [$required, 'string', 'max:60'],
+            'decimal_places' => ['sometimes', 'integer', 'min:0', 'max:4'],
         ];
     }
 
@@ -44,6 +45,7 @@ final class UnitRequest extends FormRequest
         return [
             'code.regex' => 'Kode hanya boleh berisi huruf, angka, garis bawah, atau tanda hubung.',
             'code.unique' => 'Kode satuan sudah dipakai.',
+            'decimal_places.max' => 'Presisi satuan maksimal 4 desimal.',
         ];
     }
 

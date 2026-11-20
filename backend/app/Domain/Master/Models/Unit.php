@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int $id
  * @property string $code
  * @property string $name
+ * @property int $decimal_places
  */
 class Unit extends Model
 {
@@ -22,7 +23,15 @@ class Unit extends Model
     use Auditable, HasFactory, SoftDeletes;
 
     /** @var list<string> */
-    protected $fillable = ['code', 'name'];
+    protected $fillable = ['code', 'name', 'decimal_places'];
+
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'decimal_places' => 'integer',
+        ];
+    }
 
     /** @return HasMany<Item, $this> */
     public function items(): HasMany

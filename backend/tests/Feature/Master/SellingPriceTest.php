@@ -122,6 +122,7 @@ it('memilih valid_from terbaru bila ada beberapa harga umum', function (): void 
         'unit_id' => $this->pcs->getKey(),
         'price' => '12000',
         'valid_from' => '2026-01-01',
+        'valid_to' => '2026-05-31',
     ]);
 
     SellingPrice::query()->create([
@@ -148,6 +149,113 @@ it('memvalidasi payload harga jual', function (): void {
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['errors' => ['price', 'valid_to']]);
+});
+
+it('menolak rentang harga yang tumpang tindih', function (): void {
+    SellingPrice::query()->create([
+        'item_id' => $this->item->getKey(),
+        'unit_id' => $this->pcs->getKey(),
+        'price' => '15000',
+        'valid_from' => '2026-01-01',
+        'valid_to' => '2026-06-30',
+    ]);
+
+    $this->withHeaders($this->headers)
+        ->postJson('/api/v1/selling-prices', [
+            'item_id' => $this->item->getKey(),
+            'unit_id' => $this->pcs->getKey(),
+            'price' => '16000',
+            'valid_from' => '2026-06-01',
+            'valid_to' => '2026-12-31',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'PRICE_PERIOD_OVERLAP');
+});
+
+it('memakai batas tanggal inklusif saat memeriksa tumpang tindih', function (): void {
+    SellingPrice::query()->create([
+        'item_id' => $this->item->getKey(),
+        'unit_id' => $this->pcs->getKey(),
+        'price' => '15000',
+        'valid_from' => '2026-06-01',
+        'valid_to' => '2026-06-30',
+    ]);
+
+    // Mulai sehari setelah batas akhir: tidak tumpang tindih.
+    $this->withHeaders($this->headers)
+        ->postJson('/api/v1/selling-prices', [
+            'item_id' => $this->item->getKey(),
+            'unit_id' => $this->pcs->getKey(),
+            'price' => '16000',
+            'valid_from' => '2026-07-01',
+            'valid_to' => '2026-07-31',
+        ])
+        ->assertCreated();
+
+    // Mulai tepat pada batas akhir: inklusif, sehingga tumpang tindih.
+    $this->withHeaders($this->headers)
+        ->postJson('/api/v1/selling-prices', [
+            'item_id' => $this->item->getKey(),
+            'unit_id' => $this->pcs->getKey(),
+            'price' => '17000',
+            'valid_from' => '2026-06-30',
+            'valid_to' => '2026-07-15',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'PRICE_PERIOD_OVERLAP');
+});
+
+it('memperlakukan valid_to null sebagai berlaku selamanya', function (): void {
+    SellingPrice::query()->create([
+        'item_id' => $this->item->getKey(),
+        'unit_id' => $this->pcs->getKey(),
+        'price' => '15000',
+        'valid_from' => '2026-01-01',
+    ]);
+
+    $this->withHeaders($this->headers)
+        ->getJson('/api/v1/selling-prices/lookup?item_id='.$this->item->getKey()
+            .'&unit_id='.$this->pcs->getKey()
+            .'&date=2030-12-31')
+        ->assertOk()
+        ->assertJsonPath('data.price', '15000.0000');
+
+    $this->withHeaders($this->headers)
+        ->postJson('/api/v1/selling-prices', [
+            'item_id' => $this->item->getKey(),
+            'unit_id' => $this->pcs->getKey(),
+            'price' => '17000',
+            'valid_from' => '2027-01-01',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'PRICE_PERIOD_OVERLAP');
+});
+
+it('menolak perubahan harga yang membuat rentang tumpang tindih', function (): void {
+    $first = SellingPrice::query()->create([
+        'item_id' => $this->item->getKey(),
+        'unit_id' => $this->pcs->getKey(),
+        'price' => '15000',
+        'valid_from' => '2026-01-01',
+        'valid_to' => '2026-03-31',
+    ]);
+
+    $second = SellingPrice::query()->create([
+        'item_id' => $this->item->getKey(),
+        'unit_id' => $this->pcs->getKey(),
+        'price' => '16000',
+        'valid_from' => '2026-04-01',
+        'valid_to' => '2026-06-30',
+    ]);
+
+    $this->withHeaders($this->headers)
+        ->putJson("/api/v1/selling-prices/{$second->getKey()}", [
+            'valid_from' => '2026-03-01',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'PRICE_PERIOD_OVERLAP');
+
+    expect($first->fresh()->valid_from->toDateString())->toBe('2026-01-01');
 });
 
 it('melakukan CRUD harga jual', function (): void {

@@ -25,6 +25,7 @@ final class UnitResource extends ApiResource
             'id' => $this->unit->getKey(),
             'code' => $this->unit->code,
             'name' => $this->unit->name,
+            'decimal_places' => $this->unit->decimal_places,
             ...$this->timestamps(),
         ];
     }

@@ -18,6 +18,8 @@ Menyimpan qty pada satuan input di dokumen tanpa menyimpan nilai base akan membu
 4. Seluruh perhitungan lewat `UnitConversionService` dan `App\Support\Math\Decimal` (bcmath). Float tidak dipakai.
 5. Satuan base tidak ditulis ulang di daftar konversi; faktornya selalu 1.
 6. Harga jual disimpan per satuan (`selling_prices.unit_id`) dan bisa khusus customer. Lookup mengembalikan `price` (satuan input) sekaligus `unit_price_base` (hasil konversi), sehingga pemanggil tidak perlu menghitung sendiri.
+7. Setiap satuan punya `decimal_places` (0-4). Satuan bulat seperti PCS/PACK/DUS/ROLL memakai 0; METER dan KG memakai 3. `toBase()` menolak qty yang melebihi presisi satuan base dan menolak `qty_base` yang tidak dapat dinyatakan pada presisi satuan base (`QTY_PRECISION_INVALID`). Satuan turunan boleh diketik pecahan selama hasilnya pas, misalnya 0,5 DUS x 144 = 72 PCS; 0,5 DUS x 145 = 72,5 PCS ditolak.
+8. Konversi balik `unitPriceFromBase()` menghasilkan **harga uang**, sehingga selalu dibulatkan 2 desimal HALF_UP. Contoh: biaya base Rp10.000,005 pada PCS menjadi Rp10.000,01. Pembulatan 4 desimal hanya berlaku untuk qty dan biaya per satuan base, bukan untuk harga yang dikembalikan ke pengguna.
 
 ## Konsekuensi
 
@@ -30,7 +32,8 @@ Menyimpan qty pada satuan input di dokumen tanpa menyimpan nilai base akan membu
 **Negatif**
 
 - Data qty tersimpan dua kali (`qty` dan `qty_base`). Ruang tambahan kecil, dan konsistensinya dijaga oleh service, bukan oleh trigger.
-- Mengubah satuan base item setelah ada transaksi akan membuat data lama tidak konsisten. Karena itu satuan base divalidasi saat item dibuat, dan penghapusan satuan yang dipakai item ditolak `MASTER_IN_USE`. Perubahan satuan base pada item yang sudah bertransaksi belum diizinkan dan akan ditangani bersama modul Inventory.
+- Mengubah satuan base atau faktor konversi item setelah ada transaksi akan membuat data lama tidak konsisten. Karena itu `MasterUsageGuard` menolak perubahan tersebut dengan `409 ITEM_IN_USE` begitu item muncul di tabel dokumen. Mekanisme ini membaca `config/master_usage.php`, sehingga aktif otomatis saat tabel dokumen fase berikutnya dibuat tanpa perubahan kode.
+- Presisi input satuan turunan tidak dibatasi `decimal_places`-nya sendiri; yang dijaga adalah hasil konversi pada satuan base. Ini disengaja agar pengguna dapat mengetik 0,5 DUS, tetapi tidak dapat menyimpan stok pecahan pada satuan bulat.
 
 ## Alternatif yang ditolak
 

@@ -23,6 +23,7 @@ class UnitFactory extends Factory
         return [
             'code' => $code,
             'name' => 'Satuan '.$code,
+            'decimal_places' => 0,
         ];
     }
 }

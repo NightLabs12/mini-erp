@@ -50,12 +50,12 @@ function bearerFor(User $user): array
 /**
  * Satuan master dengan kode unik; aman dipanggil berulang dalam satu test.
  */
-function masterUnit(string $code, ?string $name = null): Unit
+function masterUnit(string $code, ?string $name = null, int $decimalPlaces = 0): Unit
 {
     /** @var Unit $unit */
-    $unit = Unit::query()->firstOrCreate(
+    $unit = Unit::query()->updateOrCreate(
         ['code' => strtoupper($code)],
-        ['name' => $name ?? ucfirst(strtolower($code))],
+        ['name' => $name ?? ucfirst(strtolower($code)), 'decimal_places' => $decimalPlaces],
     );
 
     return $unit;

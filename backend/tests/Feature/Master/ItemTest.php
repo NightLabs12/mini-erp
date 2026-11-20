@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Domain\Master\Models\Item;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 beforeEach(function (): void {
     seedRbac();
@@ -194,6 +196,57 @@ it('memfilter dan mencari item', function (): void {
         ->assertOk()
         ->assertJsonPath('meta.total', 1)
         ->assertJsonPath('data.0.name', 'Kaos Putih');
+});
+
+it('mengaktifkan ITEM_IN_USE begitu tabel dokumen tersedia', function (): void {
+    Schema::create('dummy_document_items', function ($table): void {
+        $table->id();
+        $table->unsignedBigInteger('item_id');
+    });
+
+    config([
+        'master_usage.references' => [
+            Item::class => [['dummy_document_items', 'item_id']],
+        ],
+        'master_usage.document_tables' => ['dummy_document_items'],
+    ]);
+
+    $item = masterItem($this->pcs, ['category_id' => $this->category->getKey()]);
+    addConversion($item, $this->dus, '144');
+
+    DB::table('dummy_document_items')->insert(['item_id' => $item->getKey()]);
+
+    $this->withHeaders($this->headers)
+        ->putJson("/api/v1/items/{$item->getKey()}", ['base_unit_id' => $this->dus->getKey()])
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'ITEM_IN_USE')
+        ->assertJsonPath('errors.references.0', 'dummy_document_items');
+
+    $this->withHeaders($this->headers)
+        ->putJson("/api/v1/items/{$item->getKey()}", [
+            'conversions' => [['unit_id' => $this->dus->getKey(), 'factor_to_base' => 120]],
+        ])
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'ITEM_IN_USE');
+});
+
+it('menolak ubah struktur item yang sudah dipakai dokumen', function (): void {
+    if (! Schema::hasTable('purchase_order_items')) {
+        $this->markTestSkipped(
+            'Tabel purchase_order_items belum ada; test aktif otomatis setelah dokumen purchasing dibuat.'
+        );
+    }
+
+    $item = masterItem($this->pcs, ['category_id' => $this->category->getKey()]);
+
+    // Setelah Fase 4, ganti baris ini dengan pembuatan PO lewat service agar
+    // seluruh kolom wajib dan FK terisi konsisten.
+    DB::table('purchase_order_items')->insert(['item_id' => $item->getKey()]);
+
+    $this->withHeaders($this->headers)
+        ->putJson("/api/v1/items/{$item->getKey()}", ['base_unit_id' => $this->dus->getKey()])
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'ITEM_IN_USE');
 });
 
 it('mencatat audit item saat dibuat dan diubah', function (): void {

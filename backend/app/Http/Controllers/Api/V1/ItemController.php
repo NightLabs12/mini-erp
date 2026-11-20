@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Master\ItemRequest;
 use App\Http\Resources\ApiCollection;
 use App\Http\Resources\ItemResource;
+use App\Support\Math\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -74,6 +75,13 @@ final class ItemController extends Controller
         $data = $request->validated();
 
         DB::transaction(function () use ($data, $item): void {
+            if ($this->changesStructure($item, $data)) {
+                $this->usageGuard->assertNotUsedByDocuments(
+                    $item,
+                    'Satuan base atau faktor konversi tidak dapat diubah karena item sudah dipakai dokumen.',
+                );
+            }
+
             $item->fill(array_intersect_key($data, array_flip([
                 'sku', 'name', 'category_id', 'base_unit_id', 'min_stock', 'is_active',
             ])))->save();
@@ -105,6 +113,48 @@ final class ItemController extends Controller
         });
 
         return response()->noContent();
+    }
+
+    /**
+     * Perubahan yang membuat qty_base dokumen lama tidak lagi dapat
+     * direproduksi: satuan base berganti atau faktor konversi berubah.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function changesStructure(Item $item, array $data): bool
+    {
+        if (array_key_exists('base_unit_id', $data)
+            && (int) $data['base_unit_id'] !== (int) $item->base_unit_id) {
+            return true;
+        }
+
+        $conversions = $data['conversions'] ?? null;
+
+        if (! is_array($conversions)) {
+            return false;
+        }
+
+        $existing = $item->conversions()->get()->keyBy(
+            static fn ($conversion): int => (int) $conversion->unit_id,
+        );
+
+        foreach ($conversions as $row) {
+            if (! is_array($row) || ! isset($row['unit_id'], $row['factor_to_base'])) {
+                continue;
+            }
+
+            $current = $existing->get((int) $row['unit_id']);
+
+            if ($current === null) {
+                continue;
+            }
+
+            if (Decimal::compare((string) $current->factor_to_base, (string) $row['factor_to_base']) !== 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

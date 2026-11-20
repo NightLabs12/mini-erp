@@ -20,16 +20,19 @@ class MasterSeeder extends Seeder
     public function run(): void
     {
         $units = [
-            ['code' => 'PCS', 'name' => 'Pcs'],
-            ['code' => 'PACK', 'name' => 'Pack'],
-            ['code' => 'DUS', 'name' => 'Dus'],
-            ['code' => 'METER', 'name' => 'Meter'],
-            ['code' => 'ROLL', 'name' => 'Roll'],
-            ['code' => 'KG', 'name' => 'Kilogram'],
+            ['code' => 'PCS', 'name' => 'Pcs', 'decimal_places' => 0],
+            ['code' => 'PACK', 'name' => 'Pack', 'decimal_places' => 0],
+            ['code' => 'DUS', 'name' => 'Dus', 'decimal_places' => 0],
+            ['code' => 'METER', 'name' => 'Meter', 'decimal_places' => 3],
+            ['code' => 'ROLL', 'name' => 'Roll', 'decimal_places' => 0],
+            ['code' => 'KG', 'name' => 'Kilogram', 'decimal_places' => 3],
         ];
 
         foreach ($units as $unit) {
-            Unit::query()->updateOrCreate(['code' => $unit['code']], ['name' => $unit['name']]);
+            Unit::query()->updateOrCreate(
+                ['code' => $unit['code']],
+                ['name' => $unit['name'], 'decimal_places' => $unit['decimal_places']],
+            );
         }
 
         $categories = [
