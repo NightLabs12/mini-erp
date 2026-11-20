@@ -308,6 +308,15 @@ Menarik ke laptop, dijalankan dari Windows:
 
 Parameternya `-Server`, bukan `-Host`: `$Host` adalah automatic variable PowerShell yang read-only, jadi parameter bernama `Host` selalu gagal dengan "Cannot overwrite variable Host". Script melewati berkas yang sudah ada, membandingkan ukuran dengan sisi remote, dan mencetak SHA256 tiap berkas.
 
+Jumlah prompt password sama dengan jumlah berkas yang disalin. Supaya tidak ada prompt sama sekali, pasang SSH key:
+
+```powershell
+ssh-keygen -t ed25519 -C "laptop"
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh dev@172.232.245.132 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+```
+
+Setelah itu `ssh dev@172.232.245.132` tidak menanyakan password lagi, dan script berjalan tanpa interaksi sehingga bisa dijadwalkan.
+
 Menguji bahwa backup benar-benar bisa dipulihkan, tanpa menyentuh database asli. Perhatikan `-p minierp-dev`, karena nama proyek Compose berbeda dari nama direktori:
 
 ```bash

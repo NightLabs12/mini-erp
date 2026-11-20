@@ -3,8 +3,9 @@
 # Pemakaian:
 #   .\scripts\pull-backup.ps1 -Server 172.232.245.132 -User dev
 #
-# Hanya berkas yang belum ada di tujuan yang disalin. Setiap berkas diperiksa
-# ukurannya terhadap sisi remote, dan hash SHA256-nya dicetak untuk dicatat.
+# Hanya berkas yang belum ada di tujuan yang disalin. Ukuran sisi remote
+# diambil sekali untuk semua berkas, jadi jumlah prompt password sama dengan
+# jumlah berkas yang disalin (nol bila SSH key sudah dipasang).
 
 [CmdletBinding()]
 param(
@@ -27,15 +28,19 @@ foreach ($cmd in 'ssh', 'scp') {
 $target = "$User@$Server"
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 
-# `~` tidak diperluas oleh scp di sisi remote untuk semua versi, jadi path
-# diambil dari ls yang dijalankan oleh shell remote.
-$listing = ssh $target "ls -1 ~/$RemotePath*.dump ~/$RemotePath*.tar.gz 2>/dev/null"
+# Satu panggilan ssh mengembalikan ukuran dan path sekaligus. Formatnya
+# "<byte> <path>", dipisah spasi pertama karena path tidak memuat spasi.
+$listing = ssh $target "stat -c '%s %n' ~/$RemotePath*.dump ~/$RemotePath*.tar.gz 2>/dev/null"
 if (-not $listing) {
     throw "Tidak ada berkas backup di ${target}:~/$RemotePath"
 }
 
 $transferred = 0
-foreach ($remote in $listing) {
+foreach ($line in $listing) {
+    $parts = $line -split ' ', 2
+    if ($parts.Count -ne 2) { continue }
+    $remoteSize = [int64]$parts[0]
+    $remote = $parts[1]
     $name = Split-Path -Leaf $remote
     $local = Join-Path $Destination $name
 
@@ -49,7 +54,6 @@ foreach ($remote in $listing) {
     if ($LASTEXITCODE -ne 0) { throw "scp gagal untuk $name" }
 
     $localSize = (Get-Item $local).Length
-    $remoteSize = [int64](ssh $target "stat -c %s '$remote'")
     if ($localSize -ne $remoteSize) {
         Remove-Item $local -Force
         throw "Ukuran tidak cocok untuk $name (lokal $localSize, remote $remoteSize). Berkas dihapus."
