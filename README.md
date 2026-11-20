@@ -296,7 +296,7 @@ Hasilnya di `~/backups`:
 | `db_YYYY-MM-DD_HHMM.dump` | `pg_dump -Fc`, sudah terkompresi |
 | `files_YYYY-MM-DD_HHMM.tar.gz` | `.env`, `backend/.env`, `storage/app`, `docker-compose*.yml`, `docker/` |
 
-Script membaca `COMPOSE_PROJECT_NAME` dari `.env` lalu memanggil `docker compose -p <nama>`. Tanpa itu, `docker compose` menebak nama proyek dari nama direktori dan tidak menemukan container `minierp-dev`, terutama saat dijalankan dari cron.
+Script membaca `COMPOSE_PROJECT_NAME` dari `.env` lalu memanggil `docker compose -p <nama>`, sama seperti `Makefile`. Berkas compose sendiri sudah memuat `name: minierp-dev`, jadi sebenarnya tanpa `-p` pun proyeknya sama; `-p` dipakai supaya hasilnya tidak bergantung pada direktori kerja maupun isi berkas compose, terutama saat dijalankan dari cron.
 
 Dump diperiksa magic bytes `PGDMP` sebelum disimpan, jadi kegagalan `docker compose` tidak meninggalkan berkas 0 byte yang terlihat seperti backup. Rotasi default 7 hari, bisa diubah lewat `RETENTION_DAYS`.
 

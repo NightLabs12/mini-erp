@@ -24,8 +24,9 @@ mkdir -p "$BACKUP_DIR"
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
 # Compose di proyek ini dikunci ke COMPOSE_PROJECT_NAME dari .env di root.
-# Tanpa -p, docker compose menebak nama proyek dari nama direktori dan tidak
-# menemukan container yang berjalan. Nilai dibaca tanpa mengeksekusi .env.
+# Berkas compose juga memuat `name:`, tapi -p dipakai agar hasilnya sama
+# dengan Makefile tanpa bergantung pada direktori kerja. Nilai dibaca tanpa
+# mengeksekusi .env.
 compose_project=""
 if [ -f .env ]; then
   compose_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' .env | tail -n 1 | tr -d '"'\''\r')"
