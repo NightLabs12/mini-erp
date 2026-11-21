@@ -503,6 +503,100 @@ flowchart LR
 - Dokumen persediaan diharapkan diposting berurutan sesuai tanggal. Kolom `balance_qty`/`balance_value` pada ledger mengikuti urutan posting (id), sedangkan laporan menghitung ulang urutan tanggal.
 - Belum ada dokumen turunan pada Fase 4; pemeriksaan turunan ditambahkan saat Purchasing/Sales dibuat.
 
+## Modul Pelaporan dan Dashboard (Fase 7)
+
+```mermaid
+flowchart LR
+    R["GET /reports/{code}?format=json|xlsx|pdf"] --> REG["ReportRegistry"]
+    REG --> SVC["Service laporan domain"]
+    SVC --> DB[("PostgreSQL")]
+    REG --> EXP["ReportExporter"]
+    EXP --> XLS["Excel (Maatwebsite)"]
+    EXP --> PDF["PDF (DomPDF)"]
+    D["GET /dashboard/summary"] --> DASH["DashboardService"]
+    DASH --> DB
+```
+
+### Laporan
+
+- **Laba Rugi**: multi-level per akun induk, komparatif terhadap periode sebelumnya, dengan laba kotor, laba operasi, dan laba bersih.
+- **Neraca**: komparatif dua tanggal (default akhir bulan sebelumnya), memuat aset, kewajiban, ekuitas, dan baris sintetis `3-3000 Laba Tahun Berjalan`. Laba tahun berjalan dihitung dari jurnal pendapatan/HPP/beban sejak awal tahun sampai tanggal laporan (ADR 0004).
+- **Kas/Bank**: saldo awal, mutasi, saldo berjalan, dan saldo akhir untuk akun `cash_default` dan `bank_default`.
+- **Jurnal**: daftar jurnal posted/reversed beserta baris dan total, filter `source_type` dan `status`.
+- **Rekonsiliasi**: empat pemeriksaan (AP, AR, Persediaan, GR/IR) dengan status `OK`, `MISMATCH`, atau `SKIPPED` bila tabel sumber belum ada. `PeriodClosingService` memakai daftar MISMATCH yang sama.
+- **Persediaan dan purchasing/sales**: Kartu Stok, Posisi Stok, Mutasi Stok, AP/AR Aging, AP/AR Outstanding, SO/PO Outstanding, Sales/Purchase Summary.
+
+### Ekspor tunggal
+
+`ReportExporter` menormalisasi setiap laporan menjadi `{title, headings, rows, meta}` lalu menulis Excel atau PDF. `GET /reports/{code}` melayani JSON, `?format=xlsx`, dan `?format=pdf` dengan builder yang sama, sehingga tidak ada duplikasi logika per format. Hak akses memakai `report.{code}.view`.
+
+### Dashboard
+
+`GET /dashboard/summary` mengembalikan penjualan dan pembelian bulan berjalan, nilai persediaan, AP/AR outstanding, seri penjualan enam bulan, item di bawah stok minimum, dan jumlah dokumen draft yang menunggu approval.
+
+### Indeks dan performa
+
+Migrasi `2026_11_20_040000_add_reporting_indexes` menambahkan:
+
+- `journals (status, journal_date)` untuk filter jurnal posted/reversed per rentang.
+- `journal_lines (journal_date, id)` untuk saldo awal dan slice periode.
+- `stock_ledger (item_id, movement_date, id)` untuk Kartu Stok lintas gudang.
+- `purchase_invoices (status, doc_date, supplier_id)` dan `(status, due_date)`.
+- `sales_invoices (status, doc_date, customer_id)` dan `(status, due_date)`.
+
+Data performa tidak masuk `DatabaseSeeder` agar `make demo` tetap cepat. Jalankan manual:
+
+```bash
+docker compose -p minierp-dev exec -T app php artisan db:seed --class=PerformanceSeeder --force
+```
+
+Default 10.000 jurnal x 2 baris = 20.000 baris jurnal. Jumlah dapat diubah lewat `PERF_JOURNAL_COUNT`.
+
+### EXPLAIN ANALYZE General Ledger
+
+Dataset: 20.000 baris jurnal, satu akun kas, satu bulan penuh. Query General Ledger dengan window function.
+
+```
+Sort  (actual time=98.610..99.137 rows=10000 loops=1)
+  Sort Method: quicksort  Memory: 1634kB
+  Buffers: shared hit=668
+  ->  WindowAgg  (actual time=29.933..41.738 rows=10000 loops=1)
+        ->  Sort  (actual time=29.902..30.781 rows=10000 loops=1)
+              ->  Nested Loop Left Join  (actual time=5.983..20.611 rows=10000 loops=1)
+                    ->  Nested Loop Left Join  (actual time=0.049..0.060 rows=1 loops=1)
+                          ->  Seq Scan on accounts a  (actual time=0.018..0.026 rows=1 loops=1)
+                                Filter: (is_postable AND is_active AND (id = '6657'::bigint))
+                          ->  Index Scan using journal_lines_account_date_idx on journal_lines jl_1
+                                Index Cond: ((account_id = '6657'::bigint) AND (journal_date < ...))
+                    ->  Hash Join  (actual time=5.932..18.009 rows=10000 loops=1)
+                          ->  Seq Scan on journal_lines jl  (actual time=0.011..8.739 rows=10000 loops=1)
+                                Filter: ((account_id = '6657'::bigint) AND (journal_date BETWEEN ...))
+                          ->  Hash  (actual time=5.808..5.810 rows=10000 loops=1)
+                                ->  Seq Scan on journals j  (actual time=0.528..3.249 rows=10000 loops=1)
+                                      Filter: ((status)::text = ANY ('{posted,reversed}'::text[]))
+Planning Time: 57.270 ms
+Execution Time: 100.770 ms
+```
+
+Catatan: planner memilih seq scan pada `journal_lines` karena seluruh 20.000 baris berada dalam rentang tanggal dan akun yang diminta. Untuk akun dengan riwayat panjang dan rentang sempit, `journal_lines_account_date_idx` dipakai langsung seperti pada CTE `opening`. Target < 500 ms terpenuhi (≈101 ms).
+
+### EXPLAIN ANALYZE Kartu Stok
+
+Dataset: 20.000 baris `stock_ledger` untuk satu item dan gudang dalam satu bulan.
+
+```
+WindowAgg  (actual time=0.159..92.769 rows=20000 loops=1)
+  Buffers: shared hit=9354
+  ->  Index Scan using stock_ledger_item_date_idx on stock_ledger l
+        (actual time=0.138..13.376 rows=20000 loops=1)
+        Index Cond: ((item_id = 144) AND (movement_date >= ...) AND (movement_date <= ...))
+        Filter: (warehouse_id = '115'::bigint)
+Planning Time: 2.432 ms
+Execution Time: 93.860 ms
+```
+
+Indeks baru `(item_id, movement_date, id)` membuat slice Kartu Stok tetap di bawah 100 ms.
+
 ## Keamanan
 
 - Sanctum bearer token dengan masa berlaku dari `SANCTUM_EXPIRATION`.

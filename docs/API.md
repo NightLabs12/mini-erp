@@ -474,6 +474,59 @@ curl -X POST http://localhost:8100/api/v1/customer-payments \
 - **AR Aging** (`?as_of=&customer_id=`): bucket current, 1-30, 31-60, 61-90, dan lebih dari 90 hari.
 - **Income Statement** (`?from=&to=`): pendapatan, HPP, laba kotor, beban, dan laba bersih dinamis dari jurnal posted/reversed.
 
+## Laporan dan Dashboard
+
+Semua laporan memakai satu endpoint generik:
+
+```text
+GET /reports/{kode}?format=json|xlsx|pdf
+```
+
+`format` default `json`. Respons JSON berbentuk `{ "data": ... }`; `xlsx` dan `pdf` mengembalikan berkas unduhan. Hak akses mengikuti `report.{kode}.view`.
+
+| Kode | Parameter utama |
+| --- | --- |
+| `general-ledger` | `from`, `to`, `account_id` (opsional) |
+| `trial-balance` | `from`, `to` |
+| `income-statement` | `from`, `to`, `compare_from`, `compare_to` (opsional) |
+| `balance-sheet` | `as_of`, `compare_as_of` (opsional) |
+| `cash-bank` | `from`, `to` |
+| `journal` | `from`, `to`, `source_type`, `status` (opsional) |
+| `stock-card` | `item_id` (wajib), `warehouse_id`, `from`, `to` |
+| `stock-position` | `from`, `to`, `item_id`, `warehouse_id` |
+| `stock-movement` | `from`, `to`, `item_id`, `warehouse_id` |
+| `ap-aging` / `ap-outstanding` | `as_of`, `supplier_id` |
+| `ar-aging` / `ar-outstanding` | `as_of`, `customer_id` |
+| `sales-summary` / `so-outstanding` | `from`, `to`, `customer_id` |
+| `purchase-summary` / `po-outstanding` | `from`, `to`, `supplier_id` |
+| `reconciliation` | `as_of`, atau `year` + `month` |
+
+Contoh:
+
+```bash
+curl "http://localhost:8100/api/v1/reports/income-statement?from=2026-11-01&to=2026-11-30" \
+  -H "Authorization: Bearer $TOKEN"
+
+curl -OJ "http://localhost:8100/api/v1/reports/balance-sheet?as_of=2026-11-30&format=pdf" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Isi laporan
+
+- **Laba Rugi**: `sections.revenue|cogs|expense` dengan `groups` dan `lines`, `gross_profit`, `operating_profit`, `net_profit`, serta `comparison` berisi totals dan variance.
+- **Neraca**: `assets`, `liabilities`, `equity`, `totals`, `balanced`, dan `comparison`. Baris `3-3000` bertanda `dynamic=true` adalah laba tahun berjalan.
+- **Kas/Bank**: `accounts[].opening_balance`, `lines[].running_balance`, `closing_balance`, dan totals.
+- **Jurnal**: `journals[].lines`, totals debit/kredit.
+- **Rekonsiliasi**: `checks[]` berisi `check`, `label`, `expected`, `actual`, `difference`, `status` (`OK`, `MISMATCH`, `SKIPPED`), dan `ok`.
+
+### Dashboard
+
+```text
+GET /dashboard/summary
+```
+
+Permission `core.dashboard.view`. Mengembalikan `sales_this_month`, `purchases_this_month`, `inventory_value`, `ap_outstanding`, `ar_outstanding`, `sales_series` (6 bulan), `low_stock_items`, dan `pending_approvals` (total + per resource).
+
 ## Persediaan
 
 | Metode | Path | Permission |
@@ -626,4 +679,6 @@ Semua nilai qty memakai 4 desimal dan nilai uang 2 desimal. Baris pembalik ikut 
 | `SALES_INVOICE_LINE_INVALID` | 422 | Baris invoice tidak terhubung ke DO |
 | `SALES_INVOICE_CUSTOMER_MISMATCH` | 422 | Customer invoice berbeda dari customer DO |
 | `PAYMENT_CUSTOMER_MISMATCH` | 422 | Invoice bukan milik customer pembayaran |
+| `REPORT_NOT_FOUND` | 404 | Kode laporan tidak dikenal |
+| `REPORT_PARAMETER_REQUIRED` | 422 | Parameter laporan wajib belum diisi (mis. `item_id`) |
 | `SERVER_ERROR` | 500 | Kesalahan tak terduga |

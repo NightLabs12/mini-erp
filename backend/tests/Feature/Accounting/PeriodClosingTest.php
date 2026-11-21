@@ -76,6 +76,32 @@ it('menolak menutup periode bila masih ada jurnal draft', function (): void {
     }
 });
 
+it('menolak menutup periode bila rekonsiliasi mismatch', function (): void {
+    $period = accountingPeriod(2030, 1);
+
+    // Persediaan di GL naik tanpa stock_balances, sehingga rekonsiliasi selisih.
+    $this->journals->post(
+        journalLines('1-1400', '3-1000', '1000.00'),
+        'manual',
+        CarbonImmutable::parse('2030-01-10'),
+        'Persediaan tanpa ledger stok',
+    );
+
+    try {
+        $this->closing->close($period);
+        $this->fail('Periode dengan rekonsiliasi mismatch seharusnya gagal ditutup.');
+    } catch (ApiException $exception) {
+        expect($exception->errorCode())->toBe('PERIOD_CLOSE_FAILED');
+
+        $reasons = implode(' ', $exception->errors()['reasons']);
+
+        expect($reasons)->toContain('Rekonsiliasi')
+            ->toContain('inventory');
+    }
+
+    expect($period->fresh()->status)->toBe(AccountingPeriod::STATUS_OPEN);
+});
+
 it('membuka kembali periode dan mencatat pelakunya', function (): void {
     $period = accountingPeriod(2030, 1, AccountingPeriod::STATUS_CLOSED);
 

@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 6 selesai: Sales (SO -> DO -> SI -> Payment In) dengan harga otomatis, credit limit, HPP moving average, jurnal, laporan, dan cetak Surat Jalan/Invoice.**
+**Fase 7 selesai: laporan keuangan komparatif, rekonsiliasi, ekspor Excel/PDF, dashboard, dan optimasi query.**
 
 | Area | Kondisi |
 | --- | --- |
@@ -14,7 +14,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Infra | `docker-compose.yml` (php-fpm, nginx, postgres 16, node), Makefile, GitHub Actions |
 | Auth | Sanctum bearer token, login/logout/me, token expiry, rate limit login per email + IP |
 | Keamanan token | User nonaktif (`is_active=false`) ditolak `403 USER_INACTIVE`, user terhapus `401`; ganti password dan nonaktifkan akun mencabut token |
-| RBAC | 6 role, 177 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
+| RBAC | 6 role, 178 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
 | Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /{resource}/{id}/audit` untuk user dan seluruh master |
 | Penomoran | `DocumentSequenceService` mengikuti `doc_date`, reset per bulan, tanpa celah saat rollback, teruji 50 proses paralel |
 | Master data | 8 resource CRUD dengan pagination, filter, sort, search, soft delete, dan proteksi hapus saat masih dipakai |
@@ -38,13 +38,18 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | SI | Dari satu/beberapa DO, due date dari payment term, mode draft/final, jurnal Dr Piutang / Cr Penjualan / Cr PPN Keluaran |
 | Payment In | Alokasi parsial multi-invoice, jurnal Dr Kas/Bank / Cr Piutang |
 | Laporan sales | SO Outstanding, Sales Summary, AR Outstanding, AR Aging, dan Income Statement |
+| Laporan keuangan | Laba Rugi multi-level komparatif, Neraca komparatif dengan laba tahun berjalan dinamis, Kas/Bank, dan Jurnal |
+| Rekonsiliasi | AP, AR, Persediaan, dan GR/IR dengan status OK/MISMATCH/SKIPPED; terintegrasi ke validasi tutup periode |
+| Ekspor laporan | Satu `ReportExporter`: JSON, Excel, dan PDF untuk seluruh kode laporan lewat `GET /reports/{code}` |
+| Dashboard | `GET /dashboard/summary`: penjualan/pembelian bulan ini, nilai persediaan, AP/AR, seri 6 bulan, stok minimum, dokumen menunggu approval |
+| Performa | Index pelaporan, seed 20.000 baris jurnal, EXPLAIN ANALYZE GL ≈101 ms dan Kartu Stok ≈94 ms (target <500 ms) |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
 | Settings | `settings` bertipe dengan nilai default aman; `account_settings` terisi 15 pemetaan akun |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (277 test), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (292 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Manufacturing (opsional) dikerjakan pada fase berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Manufacturing (opsional) belum dikerjakan. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -100,6 +105,17 @@ Modul Manufacturing (opsional) dikerjakan pada fase berikutnya. Rencana lengkap 
 - **Cetak**: `GET /delivery-orders/{id}/print` (Surat Jalan) dan `GET /sales-invoices/{id}/print` (Invoice).
 - **Laporan**: `GET /reports/so-outstanding`, `/reports/sales-summary`, `/reports/ar-outstanding`, `/reports/ar-aging`, serta `/reports/income-statement` untuk laba kotor/bersih dinamis.
 - **Test**: skenario acceptance langkah 5-8, HPP average, jurnal HPP/Piutang/PPN, DO dan invoice parsial, tolak melebihi stok/SO/sisa DO, harga otomatis, override permission, credit limit warn/block, dan pembayaran multi-invoice.
+
+### Cakupan Pelaporan
+
+- **Laba Rugi**: multi-level per akun induk, komparatif terhadap periode sebelumnya, dengan laba kotor, laba operasi, dan laba bersih.
+- **Neraca**: komparatif dua tanggal (default akhir bulan sebelumnya), memuat aset, kewajiban, ekuitas, dan laba tahun berjalan dinamis.
+- **Kas/Bank**: saldo awal, mutasi, saldo berjalan, dan saldo akhir akun kas/bank default.
+- **Jurnal**: daftar jurnal posted/reversed beserta baris, filter sumber dan status.
+- **Rekonsiliasi**: AP, AR, Persediaan, dan GR/IR; hasil MISMATCH memblokir tutup periode.
+- **Ekspor**: `GET /reports/{code}?format=json|xlsx|pdf` untuk seluruh laporan melalui satu `ReportExporter`.
+- **Dashboard**: `GET /dashboard/summary`.
+- **Performa**: seed opsional `PerformanceSeeder` (20.000 baris jurnal) dan index pelaporan; EXPLAIN ANALYZE terdokumentasi di `docs/ARCHITECTURE.md`.
 
 ### Mode demo
 

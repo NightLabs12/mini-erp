@@ -13,63 +13,121 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Rekonsiliasi GL dengan sumber dokumen (SPEC 3.9).
  *
- * Pemeriksaan hanya dijalankan untuk tabel yang sudah ada. Pada Fase 3 tabel
- * dokumen purchasing/sales/inventory belum dibuat, sehingga hasilnya kosong
- * dan tutup periode tidak terhalang. Begitu tabelnya hadir, pemeriksaan
- * otomatis ikut aktif tanpa mengubah PeriodClosingService.
+ * Empat pemeriksaan:
+ * 1. Hutang Usaha GL = sisa purchase invoice approved.
+ * 2. Piutang Usaha GL = sisa sales invoice approved.
+ * 3. Persediaan GL = SUM stock_balances.value.
+ * 4. GR/IR GL = nilai goods receipt approved yang belum ditagih.
+ *
+ * Pemeriksaan hanya dijalankan bila tabel sumbernya ada. Hasilnya dipakai
+ * laporan rekonsiliasi dan validasi tutup periode.
  */
 final class ReconciliationService
 {
     /**
-     * @return list<array{check: string, expected: string, actual: string, difference: string}>
+     * @return array{as_of: string, checks: list<array<string, string>>, ok: bool}
      */
-    public function mismatches(AccountingPeriod $period): array
+    public function report(string $asOf): array
     {
-        $asOf = $period->lastDate()->toDateString();
-        $mismatches = [];
+        $checks = [];
 
         $this->compare(
-            $mismatches,
+            $checks,
             'accounts_payable',
+            'Hutang Usaha',
             $this->signedBalance(['accounts_payable'], $asOf),
             $this->outstanding('purchase_invoices', $asOf),
             false,
         );
 
         $this->compare(
-            $mismatches,
+            $checks,
             'accounts_receivable',
+            'Piutang Usaha',
             $this->signedBalance(['accounts_receivable'], $asOf),
             $this->outstanding('sales_invoices', $asOf),
             true,
         );
 
         $this->compare(
-            $mismatches,
+            $checks,
             'inventory',
+            'Persediaan',
             $this->signedBalance([
                 AccountMapper::INVENTORY_TRADING,
                 AccountMapper::INVENTORY_RAW,
                 AccountMapper::INVENTORY_FINISHED,
             ], $asOf),
-            $this->stockValue(),
+            $this->stockValue($asOf),
             true,
         );
 
-        return $mismatches;
+        $this->compare(
+            $checks,
+            'grir',
+            'GR/IR',
+            $this->signedBalance([AccountMapper::GRIR], $asOf),
+            $this->grirOutstanding($asOf),
+            false,
+        );
+
+        $ok = true;
+
+        foreach ($checks as $check) {
+            if (($check['status'] ?? 'OK') === 'MISMATCH') {
+                $ok = false;
+
+                break;
+            }
+        }
+
+        return [
+            'as_of' => $asOf,
+            'checks' => $checks,
+            'ok' => $ok,
+        ];
     }
 
     /**
-     * @param  list<array{check: string, expected: string, actual: string, difference: string}>  $mismatches
+     * @return array{as_of: string, checks: list<array<string, string>>, ok: bool}
+     */
+    public function reportForPeriod(AccountingPeriod $period): array
+    {
+        return $this->report($period->lastDate()->toDateString());
+    }
+
+    /**
+     * @return list<array{check: string, expected: string, actual: string, difference: string}>
+     */
+    public function mismatches(AccountingPeriod $period): array
+    {
+        return array_values(array_filter(
+            $this->reportForPeriod($period)['checks'],
+            static fn (array $check): bool => ($check['status'] ?? 'OK') === 'MISMATCH',
+        ));
+    }
+
+    /**
+     * @param  list<array<string, string>>  $checks
      */
     private function compare(
-        array &$mismatches,
+        array &$checks,
         string $check,
+        string $label,
         ?string $actual,
         ?string $source,
         bool $sourceIsDebit,
     ): void {
         if ($actual === null || $source === null) {
+            $checks[] = [
+                'check' => $check,
+                'label' => $label,
+                'expected' => '0.00',
+                'actual' => '0.00',
+                'difference' => '0.00',
+                'status' => 'SKIPPED',
+            ];
+
             return;
         }
 
@@ -77,20 +135,21 @@ final class ReconciliationService
             ? Decimal::round($source, Decimal::MONEY_SCALE)
             : Decimal::round(Decimal::mul($source, '-1', Decimal::MONEY_SCALE), Decimal::MONEY_SCALE);
 
-        if (Decimal::compare($expected, $actual, Decimal::MONEY_SCALE) === 0) {
-            return;
-        }
+        $difference = Decimal::sub($expected, $actual, Decimal::MONEY_SCALE);
+        $status = Decimal::compare($expected, $actual, Decimal::MONEY_SCALE) === 0 ? 'OK' : 'MISMATCH';
 
-        $mismatches[] = [
+        $checks[] = [
             'check' => $check,
+            'label' => $label,
             'expected' => $expected,
             'actual' => $actual,
-            'difference' => Decimal::sub($expected, $actual, Decimal::MONEY_SCALE),
+            'difference' => $difference,
+            'status' => $status,
         ];
     }
 
     /**
-     * Saldo signed (debit - credit) akun pada akhir periode.
+     * Saldo signed (debit - credit) akun pada tanggal tertentu.
      *
      * @param  list<string>  $keys
      */
@@ -142,16 +201,53 @@ final class ReconciliationService
         return Decimal::round((string) ($row->amount ?? '0'), Decimal::MONEY_SCALE);
     }
 
-    private function stockValue(): ?string
+    /**
+     * Nilai persediaan per tanggal dari ledger. Untuk tanggal hari ini nilainya
+     * sama dengan SUM stock_balances.value, tetapi perhitungan ini tetap benar
+     * saat menutup periode lama.
+     */
+    private function stockValue(string $asOf): ?string
     {
-        if (! Schema::hasTable('stock_balances')
-            || ! Schema::hasColumn('stock_balances', 'value')) {
+        if (! Schema::hasTable('stock_ledger')
+            || ! Schema::hasColumn('stock_ledger', 'total_value')) {
             return null;
         }
 
-        $deletedFilter = Schema::hasColumn('stock_balances', 'deleted_at') ? ' WHERE deleted_at IS NULL' : '';
+        $row = DB::selectOne(
+            <<<'SQL'
+                SELECT COALESCE(SUM(
+                           CASE WHEN qty_in_base > 0 THEN total_value ELSE -total_value END
+                       ), 0) AS amount
+                  FROM stock_ledger
+                 WHERE movement_date <= ?
+            SQL,
+            [$asOf],
+        );
 
-        $row = DB::selectOne("SELECT COALESCE(SUM(value), 0) AS amount FROM stock_balances{$deletedFilter}");
+        return Decimal::round((string) ($row->amount ?? '0'), Decimal::MONEY_SCALE);
+    }
+
+    private function grirOutstanding(string $asOf): ?string
+    {
+        if (! Schema::hasTable('goods_receipt_items')
+            || ! Schema::hasTable('goods_receipts')
+            || ! Schema::hasColumns('goods_receipt_items', ['qty_base', 'invoiced_qty_base', 'unit_cost_base'])) {
+            return null;
+        }
+
+        $row = DB::selectOne(
+            <<<'SQL'
+                SELECT COALESCE(SUM(
+                           (gri.qty_base - gri.invoiced_qty_base) * gri.unit_cost_base
+                       ), 0) AS amount
+                  FROM goods_receipt_items gri
+                  JOIN goods_receipts gr ON gr.id = gri.goods_receipt_id
+                 WHERE gr.status = 'approved'
+                   AND gr.deleted_at IS NULL
+                   AND gr.doc_date <= ?
+            SQL,
+            [$asOf],
+        );
 
         return Decimal::round((string) ($row->amount ?? '0'), Decimal::MONEY_SCALE);
     }

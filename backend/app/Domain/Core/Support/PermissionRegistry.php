@@ -63,6 +63,7 @@ final class PermissionRegistry
                 'role' => ['view', 'update'],
                 'audit' => ['view'],
                 'setting' => ['view', 'update'],
+                'dashboard' => ['view'],
             ],
             'master' => [
                 'unit' => self::CRUD,
@@ -133,6 +134,7 @@ final class PermissionRegistry
         return [
             'admin' => ['*'],
             'purchasing' => [
+                'core.dashboard.view',
                 'master.*.view',
                 'purchase.*.*',
                 'inventory.stock.*',
@@ -144,6 +146,7 @@ final class PermissionRegistry
                 'report.stock-movement.*',
             ],
             'sales' => [
+                'core.dashboard.view',
                 'master.*.view',
                 'sales.*.*',
                 'inventory.stock.*',
@@ -154,6 +157,7 @@ final class PermissionRegistry
                 'report.stock-position.*',
             ],
             'warehouse' => [
+                'core.dashboard.view',
                 'master.*.view',
                 'inventory.*.*',
                 'purchase.goods-receipt.view',
@@ -164,6 +168,7 @@ final class PermissionRegistry
                 'report.stock-movement.*',
             ],
             'finance' => [
+                'core.dashboard.view',
                 'master.*.view',
                 'accounting.*.*',
                 'purchase.purchase-invoice.*',

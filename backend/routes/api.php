@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\Auth\LogoutController;
 use App\Http\Controllers\Api\V1\Auth\MeController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\CustomerPaymentController;
+use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DeliveryOrderController;
 use App\Http\Controllers\Api\V1\GoodsReceiptController;
 use App\Http\Controllers\Api\V1\HealthController;
@@ -20,7 +21,7 @@ use App\Http\Controllers\Api\V1\JournalController;
 use App\Http\Controllers\Api\V1\PurchaseInvoiceController;
 use App\Http\Controllers\Api\V1\PurchaseOrderController;
 use App\Http\Controllers\Api\V1\PurchaseRequestController;
-use App\Http\Controllers\Api\V1\ReportController;
+use App\Http\Controllers\Api\V1\ReportExportController;
 use App\Http\Controllers\Api\V1\SalesInvoiceController;
 use App\Http\Controllers\Api\V1\SalesOrderController;
 use App\Http\Controllers\Api\V1\SellingPriceController;
@@ -236,48 +237,12 @@ Route::prefix('v1')->group(function (): void {
         Route::post('accounting-periods/{accountingPeriod}/reopen', [AccountingPeriodController::class, 'reopen'])
             ->name('api.v1.accounting-periods.reopen');
 
-        // Laporan awal. Parameter binding dan validasi tanggal ada di service/request.
-        Route::get('reports/general-ledger', [ReportController::class, 'generalLedger'])
-            ->middleware('permission:report.general-ledger.view')
-            ->name('api.v1.reports.general-ledger');
-        Route::get('reports/trial-balance', [ReportController::class, 'trialBalance'])
-            ->middleware('permission:report.trial-balance.view')
-            ->name('api.v1.reports.trial-balance');
-        Route::get('reports/stock-card', [ReportController::class, 'stockCard'])
-            ->middleware('permission:report.stock-card.view')
-            ->name('api.v1.reports.stock-card');
-        Route::get('reports/stock-position', [ReportController::class, 'stockPosition'])
-            ->middleware('permission:report.stock-position.view')
-            ->name('api.v1.reports.stock-position');
-        Route::get('reports/stock-movement', [ReportController::class, 'stockMovement'])
-            ->middleware('permission:report.stock-movement.view')
-            ->name('api.v1.reports.stock-movement');
-        Route::get('reports/po-outstanding', [ReportController::class, 'poOutstanding'])
-            ->middleware('permission:report.po-outstanding.view')
-            ->name('api.v1.reports.po-outstanding');
-        Route::get('reports/purchase-summary', [ReportController::class, 'purchaseSummary'])
-            ->middleware('permission:report.purchase-summary.view')
-            ->name('api.v1.reports.purchase-summary');
-        Route::get('reports/ap-outstanding', [ReportController::class, 'apOutstanding'])
-            ->middleware('permission:report.ap-outstanding.view')
-            ->name('api.v1.reports.ap-outstanding');
-        Route::get('reports/ap-aging', [ReportController::class, 'apAging'])
-            ->middleware('permission:report.ap-aging.view')
-            ->name('api.v1.reports.ap-aging');
-        Route::get('reports/so-outstanding', [ReportController::class, 'soOutstanding'])
-            ->middleware('permission:report.so-outstanding.view')
-            ->name('api.v1.reports.so-outstanding');
-        Route::get('reports/sales-summary', [ReportController::class, 'salesSummary'])
-            ->middleware('permission:report.sales-summary.view')
-            ->name('api.v1.reports.sales-summary');
-        Route::get('reports/ar-outstanding', [ReportController::class, 'arOutstanding'])
-            ->middleware('permission:report.ar-outstanding.view')
-            ->name('api.v1.reports.ar-outstanding');
-        Route::get('reports/ar-aging', [ReportController::class, 'arAging'])
-            ->middleware('permission:report.ar-aging.view')
-            ->name('api.v1.reports.ar-aging');
-        Route::get('reports/income-statement', [ReportController::class, 'incomeStatement'])
-            ->middleware('permission:report.income-statement.view')
-            ->name('api.v1.reports.income-statement');
+        // Laporan: satu endpoint generik untuk JSON, Excel, dan PDF.
+        Route::get('reports/{report}', [ReportExportController::class, 'show'])
+            ->name('api.v1.reports.show');
+
+        Route::get('dashboard/summary', [DashboardController::class, 'summary'])
+            ->middleware('permission:core.dashboard.view')
+            ->name('api.v1.dashboard.summary');
     });
 });
