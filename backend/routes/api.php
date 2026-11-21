@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\AccountController;
 use App\Http\Controllers\Api\V1\AccountingPeriodController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\Auth\LoginController;
@@ -89,6 +90,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('customers/{customer}/audit', [CustomerController::class, 'audit'])
             ->name('api.v1.customers.audit');
         Route::apiResource('customers', CustomerController::class);
+
+        Route::apiResource('accounts', AccountController::class);
 
         Route::get('selling-prices/lookup', [SellingPriceController::class, 'lookup'])
             ->name('api.v1.selling-prices.lookup');

@@ -37,7 +37,7 @@ final class SellingPriceController extends Controller
     {
         $this->authorize('viewAny', SellingPrice::class);
 
-        $paginator = $this->paginateListQuery(SellingPrice::query()->with(['unit']), $request, [
+        $paginator = $this->paginateListQuery(SellingPrice::query()->with(['unit', 'item', 'customer']), $request, [
             'sortable' => ['item_id', 'unit_id', 'customer_id', 'price', 'valid_from', 'created_at'],
             'filterable' => ['item_id', 'unit_id', 'customer_id', 'valid_from', 'valid_to', 'created_at'],
             'default_sort' => '-id',
@@ -75,7 +75,7 @@ final class SellingPriceController extends Controller
     {
         $this->authorize('view', $sellingPrice);
 
-        return new SellingPriceResource($sellingPrice->load('unit'));
+        return new SellingPriceResource($sellingPrice->load(['unit', 'item', 'customer']));
     }
 
     public function update(SellingPriceRequest $request, SellingPrice $sellingPrice): SellingPriceResource

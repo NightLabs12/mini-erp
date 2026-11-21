@@ -101,7 +101,7 @@ Filter: `?filter[auditable_type]=user`, `?filter[auditable_id]=7`, `?filter[user
 
 Satu baris berisi `old_values`, `new_values`, dan `diff` (jsonb). Atribut sensitif seperti `password` tidak pernah masuk audit.
 
-Riwayat per resource tersedia di `GET /{resource}/{id}/audit` untuk `users`, `units`, `item-categories`, `items`, `warehouses`, `suppliers`, `customers`, dan `selling-prices`.
+Riwayat per resource tersedia di `GET /{resource}/{id}/audit` untuk `users`, `units`, `item-categories`, `items`, `warehouses`, `suppliers`, `customers`, dan `selling-prices`. Akun COA tidak memakai audit trail karena bersifat konfigurasi laporan; perubahan tetap tercatat pada audit jurnal terkait.
 
 ## Master data
 
@@ -117,6 +117,19 @@ Semua resource memakai pola yang sama: CRUD RESTful, pagination (`?page`, `?per_
 | Supplier | `/suppliers` | `master.supplier.*` |
 | Customer | `/customers` | `master.customer.*` |
 | Harga jual | `/selling-prices` | `master.selling-price.*` |
+| Akun COA | `/accounts` | `master.account.*` |
+
+### Akun COA
+
+```bash
+curl -X POST http://localhost:8100/api/v1/accounts \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"code": "1-1450", "name": "Persediaan Lain", "type": "asset", "normal_balance": "D", "parent_id": 4}'
+```
+
+- `type` harus salah satu dari `asset`, `liability`, `equity`, `revenue`, `cogs`, `expense`; `normal_balance` `D` atau `C`.
+- `level` dihitung dari akun induk dan tidak diterima dari klien. Akun induk tidak boleh dirinya sendiri atau turunannya (`422 ACCOUNT_PARENT_CYCLE`).
+- Hapus ditolak `409 ACCOUNT_IN_USE` bila akun masih punya anak, dipakai kategori item, `account_settings`, atau baris jurnal.
 
 ### Item dan konversi satuan
 
@@ -679,6 +692,8 @@ Semua nilai qty memakai 4 desimal dan nilai uang 2 desimal. Baris pembalik ikut 
 | `SALES_INVOICE_LINE_INVALID` | 422 | Baris invoice tidak terhubung ke DO |
 | `SALES_INVOICE_CUSTOMER_MISMATCH` | 422 | Customer invoice berbeda dari customer DO |
 | `PAYMENT_CUSTOMER_MISMATCH` | 422 | Invoice bukan milik customer pembayaran |
+| `ACCOUNT_IN_USE` | 409 | Akun COA masih dipakai atau punya anak |
+| `ACCOUNT_PARENT_CYCLE` | 422 | Akun induk membentuk siklus |
 | `REPORT_NOT_FOUND` | 404 | Kode laporan tidak dikenal |
 | `REPORT_PARAMETER_REQUIRED` | 422 | Parameter laporan wajib belum diisi (mis. `item_id`) |
 | `SERVER_ERROR` | 500 | Kesalahan tak terduga |

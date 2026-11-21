@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 9A selesai: fondasi frontend React (login, RBAC menu, dashboard, komponen UI).**
+**Fase 9B selesai: CRUD master data di frontend dengan validasi zod dan error field dari API.**
 
 | Area | Kondisi |
 | --- | --- |
@@ -17,7 +17,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | RBAC | 6 role, 178 permission `{modul}.{resource}.{aksi}`, policy + middleware, CRUD user dan assign role |
 | Audit trail | Trait `Auditable` (old/new/diff jsonb), `GET /audit-logs`, `GET /{resource}/{id}/audit` untuk user dan seluruh master |
 | Penomoran | `DocumentSequenceService` mengikuti `doc_date`, reset per bulan, tanpa celah saat rollback, teruji 50 proses paralel |
-| Master data | 8 resource CRUD dengan pagination, filter, sort, search, soft delete, dan proteksi hapus saat masih dipakai |
+| Master data | 9 resource CRUD (termasuk akun COA) dengan pagination, filter, sort, search, soft delete, dan proteksi hapus saat masih dipakai |
 | Konversi satuan | `UnitConversionService`: Pcs/Pack/Dus/Meter/Kg, presisi per satuan, biaya per satuan base |
 | Harga jual | `GET /selling-prices/lookup` dengan prioritas harga khusus customer, anti-overlap periode |
 | Akuntansi | COA ~50 akun, 12 periode, jurnal manual draft/approve/reverse, constraint keseimbangan di database |
@@ -45,14 +45,16 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Frontend fondasi | React 18 + TypeScript strict + Tailwind v4 + React Router + TanStack Query/Table; login token Sanctum, AuthContext, `<Can>` permission, sidebar pohon per permission, dashboard Recharts |
 | Komponen UI | `DataTable` (search/sort/pagination), `FormField`, `Modal`, `ConfirmDialog`, `Toast`, `StatusBadge`, `EmptyState`, `Skeleton` |
 | Frontend quality | `tsc -b` strict dan ESLint bersih; build produksi dipecah per vendor (react, query, charts) |
+| Frontend master data | CRUD satuan, kategori, item + konversi, gudang, supplier, customer, harga jual, dan akun COA; validasi zod selaras FormRequest |
+| API akun COA | `GET/POST/PUT/DELETE /accounts` dengan level otomatis dari parent, proteksi siklus, dan guard hapus `ACCOUNT_IN_USE` |
 | Performa | Index pelaporan, seed 20.000 baris jurnal, EXPLAIN ANALYZE GL ≈101 ms dan Kartu Stok ≈94 ms (target <500 ms) |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
 | Settings | `settings` bertipe dengan nilai default aman; `account_settings` terisi 15 pemetaan akun |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (297 test), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (303 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Manufacturing (opsional) belum dikerjakan. Halaman modul di frontend masih berupa placeholder sampai fase UI berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Manufacturing (opsional) belum dikerjakan. Halaman transaksi di frontend masih berupa placeholder sampai fase UI berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -64,7 +66,7 @@ Modul Manufacturing (opsional) belum dikerjakan. Halaman modul di frontend masih
 
 ### Cakupan Master data
 
-- **Satuan** (`units`), **kategori item** (`item-categories`), **item** (`items`), **gudang** (`warehouses`), **supplier** (`suppliers`), **customer** (`customers`), **harga jual** (`selling-prices`), dan **konversi satuan** (`items/{item}/unit-conversions`).
+- **Satuan** (`units`), **kategori item** (`item-categories`), **item** (`items`), **gudang** (`warehouses`), **supplier** (`suppliers`), **customer** (`customers`), **harga jual** (`selling-prices`), **akun COA** (`accounts`), dan **konversi satuan** (`items/{item}/unit-conversions`).
 - **Item**: SKU unik parsial (`WHERE deleted_at IS NULL`), validasi satuan base, konversi `factor_to_base > 0`, satu satuan hanya boleh muncul sekali, satuan base tidak boleh diulang sebagai konversi.
 - **Konversi satuan**: Kaos Polos base Pcs, Pack = 12 Pcs, Dus = 144 Pcs. Qty dokumen selalu dikonversi ke satuan base; biaya per satuan base dihitung dari harga satuan input.
 - **Harga jual**: prioritas harga khusus customer yang berlaku pada tanggal transaksi, lalu harga umum; baris dengan `valid_from` terbaru menang. Respons lookup menyertakan `unit_price_base`.
@@ -120,7 +122,7 @@ Modul Manufacturing (opsional) belum dikerjakan. Halaman modul di frontend masih
 - **Dashboard**: `GET /dashboard/summary`.
 - **Performa**: seed opsional `PerformanceSeeder` (20.000 baris jurnal) dan index pelaporan; EXPLAIN ANALYZE terdokumentasi di `docs/ARCHITECTURE.md`.
 
-### Cakupan Frontend (Fase 9A)
+### Cakupan Frontend (Fase 9A-9B)
 
 - **Stack**: React 18, TypeScript strict (`noUncheckedIndexedAccess`), Tailwind CSS v4, React Router, TanStack Query, TanStack Table, Recharts, react-hook-form.
 - **API client** (`src/lib/api.ts`): wrapper `fetch` dengan header Bearer, parsing error `{ message, code, errors }`, `ApiError`, dan pembersihan token otomatis saat `401`.
@@ -129,6 +131,8 @@ Modul Manufacturing (opsional) belum dikerjakan. Halaman modul di frontend masih
 - **Layout**: sidebar pohon per modul yang hanya menampilkan menu sesuai permission, topbar user/role/logout, drawer mobile.
 - **Halaman**: Login (akun demo), Dashboard (kartu metrik, grafik penjualan enam bulan, stok minimum, dokumen menunggu approval), Status sistem, dan placeholder modul.
 - **Komponen umum**: `DataTable` (search, sort server-side, pagination, skeleton, empty state), `FormField`, `Modal`, `ConfirmDialog`, `Toast`, `StatusBadge`, `EmptyState`, `Skeleton`.
+- **Master data**: halaman CRUD untuk satuan, kategori item, item + konversi satuan, gudang, supplier, customer, harga jual, dan akun COA. Setiap form memakai zod yang selaras dengan FormRequest, menampilkan error field dari respons 422, serta menyembunyikan tombol tambah/ubah/hapus sesuai permission.
+- **Komponen CRUD bersama**: `MasterCrudPage` menangani daftar, pencarian, sorting, pagination, modal form, konfirmasi hapus, toast, dan invalidasi cache.
 - **Verifikasi**: `make fe-lint`, `make fe-typecheck`, dan `make fe-build` bersih.
 
 ### Mode demo

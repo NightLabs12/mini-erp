@@ -24,6 +24,11 @@ final class SellingPriceResource extends ApiResource
         return [
             'id' => $this->sellingPrice->getKey(),
             'item_id' => $this->sellingPrice->item_id,
+            'item' => $this->whenLoaded('item', fn (): ?array => $this->sellingPrice->item === null ? null : [
+                'id' => $this->sellingPrice->item->getKey(),
+                'sku' => $this->sellingPrice->item->sku,
+                'name' => $this->sellingPrice->item->name,
+            ]),
             'unit_id' => $this->sellingPrice->unit_id,
             'unit' => $this->whenLoaded('unit', fn (): ?array => $this->sellingPrice->unit === null ? null : [
                 'id' => $this->sellingPrice->unit->getKey(),
@@ -31,6 +36,11 @@ final class SellingPriceResource extends ApiResource
                 'name' => $this->sellingPrice->unit->name,
             ]),
             'customer_id' => $this->sellingPrice->customer_id,
+            'customer' => $this->whenLoaded('customer', fn (): ?array => $this->sellingPrice->customer === null ? null : [
+                'id' => $this->sellingPrice->customer->getKey(),
+                'code' => $this->sellingPrice->customer->code,
+                'name' => $this->sellingPrice->customer->name,
+            ]),
             'price' => $this->sellingPrice->price,
             'unit_price_base' => $this->unitPriceBase,
             'valid_from' => $this->sellingPrice->valid_from?->format('Y-m-d'),

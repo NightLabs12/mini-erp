@@ -44,6 +44,7 @@ use App\Domain\Sales\Models\SalesInvoiceItem;
 use App\Domain\Sales\Models\SalesOrder;
 use App\Domain\Sales\Models\SalesOrderItem;
 use App\Policies\AccountingPeriodPolicy;
+use App\Policies\AccountPolicy;
 use App\Policies\AuditLogPolicy;
 use App\Policies\CustomerPaymentPolicy;
 use App\Policies\CustomerPolicy;
@@ -163,6 +164,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(SellingPrice::class, SellingPricePolicy::class);
         Gate::policy(Journal::class, JournalPolicy::class);
         Gate::policy(AccountingPeriod::class, AccountingPeriodPolicy::class);
+        Gate::policy(Account::class, AccountPolicy::class);
         Gate::policy(WarehouseTransfer::class, WarehouseTransferPolicy::class);
         Gate::policy(StockOpname::class, StockOpnamePolicy::class);
         Gate::policy(PurchaseRequest::class, PurchaseRequestPolicy::class);

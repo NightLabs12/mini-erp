@@ -597,7 +597,7 @@ Execution Time: 93.860 ms
 
 Indeks baru `(item_id, movement_date, id)` membuat slice Kartu Stok tetap di bawah 100 ms.
 
-## Frontend (Fase 9A)
+## Frontend (Fase 9A-9B)
 
 ```mermaid
 flowchart LR
@@ -617,6 +617,19 @@ flowchart LR
 - **Dashboard**: kartu penjualan/pembelian bulan ini, nilai persediaan, AP/AR, grafik area Recharts enam bulan, tabel stok minimum, dan ringkasan dokumen draft.
 - **Komponen**: `DataTable` memakai TanStack Table untuk row model dengan sorting dan pagination server-side; `Modal`/`ConfirmDialog` menangani Escape, scroll lock, dan `aria-modal`; `ToastProvider` menyediakan notifikasi `aria-live`.
 - **Build**: Vite memecah chunk vendor (`react`, `query`, `charts`) agar bundle awal tetap kecil dan peringatan ukuran chunk hilang.
+
+### Master data
+
+- Satu komponen `MasterCrudPage` menangani daftar, pencarian debounce, sorting server-side, pagination, modal form, konfirmasi hapus, toast, dan invalidasi cache TanStack Query. Setiap halaman hanya mendefinisikan kolom, skema zod, pemetaan form/payload, dan komponen field.
+- Skema zod per resource berada di `src/lib/validation.ts` dan mencerminkan aturan FormRequest (panjang, pola kode, email, angka, tanggal, konversi unik, dan faktor > 0).
+- Error 422 dipetakan ke field lewat `applyApiError`, termasuk path bersarang seperti `conversions.0.unit_id`; pesan umum ditampilkan sebagai banner dan toast.
+- Tombol tambah/ubah/hapus mengikuti permission `master.{resource}.create|update|delete`; backend tetap menegakkan otorisasi.
+- Item memakai `useFieldArray` untuk konversi satuan, menyaring satuan base dari pilihan, dan mengirim seluruh daftar konversi agar backend menyelaraskannya dalam satu transaksi.
+- Akun COA memakai API `/accounts` baru: level dihitung dari parent, siklus ditolak, dan penghapusan dijaga terhadap anak, kategori item, `account_settings`, dan baris jurnal.
+
+### Isolasi database test
+
+`phpunit.xml` memaksa `APP_ENV`, `DB_CONNECTION`, dan `DB_DATABASE` lewat `<env>` **dan** `<server>`. Variabel lingkungan container masuk ke `$_SERVER`, dan dotenv membaca `$_SERVER` lebih dulu; tanpa entri `<server>`, `RefreshDatabase` akan menjalankan `migrate:fresh` pada database demo. Test `TestEnvironmentTest` menjaga agar konfigurasi ini tidak kembali salah.
 
 ## Keamanan
 
