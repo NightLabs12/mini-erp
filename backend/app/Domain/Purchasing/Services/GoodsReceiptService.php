@@ -17,8 +17,6 @@ use App\Domain\Master\Models\Warehouse;
 use App\Domain\Master\Services\UnitConversionService;
 use App\Domain\Purchasing\Models\GoodsReceipt;
 use App\Domain\Purchasing\Models\GoodsReceiptItem;
-use App\Domain\Purchasing\Models\PurchaseInvoice;
-use App\Domain\Purchasing\Models\PurchaseInvoiceItem;
 use App\Domain\Purchasing\Models\PurchaseOrder;
 use App\Domain\Purchasing\Models\PurchaseOrderItem;
 use App\Exceptions\ApiException;
@@ -473,20 +471,16 @@ final class GoodsReceiptService
         );
     }
 
+    /**
+     * GR dianggap sudah ditagih hanya bila ada qty yang masih tercatat pada
+     * invoice approved. Invoice yang sudah di-disapprove mengembalikan
+     * invoiced_qty_base ke nol, sehingga GR boleh dibatalkan kembali dan tidak
+     * terjebak sebagai "memiliki dokumen turunan" selamanya.
+     */
     private function hasActiveInvoice(GoodsReceipt $receipt): bool
     {
-        $grItemIds = $receipt->items()->pluck('id')->all();
-
-        if ($grItemIds === []) {
-            return false;
-        }
-
-        return PurchaseInvoiceItem::query()
-            ->whereIn('goods_receipt_item_id', $grItemIds)
-            ->whereHas('invoice', static function ($query): void {
-                $query->whereIn('status', [PurchaseInvoice::STATUS_DRAFT, PurchaseInvoice::STATUS_APPROVED])
-                    ->whereNull('deleted_at');
-            })
+        return $receipt->items()
+            ->where('invoiced_qty_base', '>', 0)
             ->exists();
     }
 

@@ -29,6 +29,16 @@ it('menolak salah satu pengeluaran saat stok terbatas', function (): void {
     $cleanup();
 
     $now = now();
+
+    // PeriodGuard pada StockService membutuhkan baris periode yang sudah
+    // di-commit agar terlihat oleh proses anak.
+    $probe->table('accounting_periods')->insertOrIgnore([
+        'year' => (int) $now->year,
+        'month' => (int) $now->month,
+        'status' => 'open',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
     $unitId = $probe->table('units')->insertGetId([
         'code' => 'PCS',
         'name' => 'Pcs',

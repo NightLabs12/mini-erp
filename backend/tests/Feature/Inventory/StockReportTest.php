@@ -7,8 +7,11 @@ use App\Domain\Inventory\Services\StockService;
 use App\Domain\Master\Models\ItemCategory;
 use App\Domain\Master\Models\Warehouse;
 use Carbon\CarbonImmutable;
+use Database\Seeders\AccountingSeeder;
 
 beforeEach(function (): void {
+    $this->seed(AccountingSeeder::class);
+
     $this->stock = app(StockService::class);
     $this->reports = app(StockReportService::class);
     $this->pcs = masterUnit('PCS', 'Pcs');
@@ -25,6 +28,7 @@ beforeEach(function (): void {
     $this->warehouse = Warehouse::factory()->create(['code' => 'GD-UTM', 'name' => 'Gudang Utama']);
 
     $this->previousMonth = CarbonImmutable::parse(now()->startOfMonth()->subMonth()->toDateString());
+    accountingPeriod((int) $this->previousMonth->year, (int) $this->previousMonth->month);
     $this->currentMonth = CarbonImmutable::parse(now()->startOfMonth()->toDateString());
     $this->from = now()->startOfMonth()->toDateString();
     $this->to = now()->endOfMonth()->toDateString();

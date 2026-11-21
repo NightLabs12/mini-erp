@@ -181,6 +181,15 @@ final class ReconciliationService
         return Decimal::round((string) ($row->amount ?? '0'), Decimal::MONEY_SCALE);
     }
 
+    /**
+     * Sisa tagihan per tanggal laporan.
+     *
+     * Nilai dihitung dari total invoice dikurangi alokasi pembayaran yang
+     * benar-benar sudah approved dan bertanggal <= as-of. Memakai kolom
+     * `paid_amount` saja akan salah bila ada pembayaran bertanggal setelah
+     * as-of tetapi sudah di-approve, sehingga GL (yang memfilter journal_date)
+     * dan laporan ini dapat berbeda tanpa sebab.
+     */
     private function outstanding(string $table, string $asOf): ?string
     {
         if (! Schema::hasTable($table)
@@ -188,13 +197,65 @@ final class ReconciliationService
             return null;
         }
 
-        $deletedFilter = Schema::hasColumn($table, 'deleted_at') ? ' AND deleted_at IS NULL' : '';
+        $deletedFilter = Schema::hasColumn($table, 'deleted_at') ? ' AND i.deleted_at IS NULL' : '';
+
+        $allocation = match ($table) {
+            'purchase_invoices' => [
+                'table' => 'supplier_payment_allocations',
+                'invoice_column' => 'purchase_invoice_id',
+                'payment_table' => 'supplier_payments',
+                'payment_column' => 'supplier_payment_id',
+            ],
+            'sales_invoices' => [
+                'table' => 'customer_payment_allocations',
+                'invoice_column' => 'sales_invoice_id',
+                'payment_table' => 'customer_payments',
+                'payment_column' => 'customer_payment_id',
+            ],
+            default => null,
+        };
+
+        if ($allocation === null
+            || ! Schema::hasTable($allocation['table'])
+            || ! Schema::hasTable($allocation['payment_table'])) {
+            return $this->legacyOutstanding($table, $asOf, $deletedFilter);
+        }
+
+        $allocations = $allocation['table'];
+        $invoiceColumn = $allocation['invoice_column'];
+        $paymentTable = $allocation['payment_table'];
+        $paymentColumn = $allocation['payment_column'];
 
         $row = DB::selectOne(
-            "SELECT COALESCE(SUM(total - paid_amount), 0) AS amount
-               FROM {$table}
-              WHERE status = 'approved'
-                AND doc_date <= ?{$deletedFilter}",
+            "SELECT COALESCE(SUM(i.total - COALESCE(a.amount, 0)), 0) AS amount
+               FROM {$table} i
+               LEFT JOIN (
+                   SELECT al.{$invoiceColumn} AS invoice_id, SUM(al.amount) AS amount
+                     FROM {$allocations} al
+                     JOIN {$paymentTable} p ON p.id = al.{$paymentColumn}
+                    WHERE p.status = 'approved'
+                      AND p.deleted_at IS NULL
+                      AND p.doc_date <= ?
+                    GROUP BY al.{$invoiceColumn}
+               ) a ON a.invoice_id = i.id
+              WHERE i.status = 'approved'
+                AND i.doc_date <= ?{$deletedFilter}",
+            [$asOf, $asOf],
+        );
+
+        return Decimal::round((string) ($row->amount ?? '0'), Decimal::MONEY_SCALE);
+    }
+
+    /**
+     * Fallback bila tabel pembayaran belum tersedia (mis. migrasi lama).
+     */
+    private function legacyOutstanding(string $table, string $asOf, string $deletedFilter): string
+    {
+        $row = DB::selectOne(
+            "SELECT COALESCE(SUM(i.total - i.paid_amount), 0) AS amount
+               FROM {$table} i
+              WHERE i.status = 'approved'
+                AND i.doc_date <= ?{$deletedFilter}",
             [$asOf],
         );
 

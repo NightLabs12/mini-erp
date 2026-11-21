@@ -111,6 +111,22 @@ it('menolak disapprove DO yang sudah ditagih', function (): void {
     }
 });
 
+it('mengizinkan disapprove DO setelah invoice-nya dibatalkan', function (): void {
+    $delivery = $this->deliveries->approve(salesDelivery($this->order->fresh()));
+
+    $invoice = $this->salesInvoices->approve(salesInvoice($delivery->fresh()));
+    $this->salesInvoices->disapprove($invoice->fresh());
+
+    $draft = $this->deliveries->disapprove($delivery->fresh());
+
+    expect($draft->status)->toBe(DeliveryOrder::STATUS_DRAFT);
+
+    $balance = $this->stock->balance($this->item, $this->warehouse);
+
+    expect((string) $balance->qty_base)->toBe('2880.0000')
+        ->and((string) $balance->value)->toBe('31680000.00');
+});
+
 it('menolak disapprove DO pada periode closed', function (): void {
     $delivery = $this->deliveries->approve(salesDelivery($this->order->fresh()));
 

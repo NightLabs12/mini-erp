@@ -16,8 +16,6 @@ use App\Domain\Master\Models\Unit;
 use App\Domain\Master\Services\UnitConversionService;
 use App\Domain\Sales\Models\DeliveryOrder;
 use App\Domain\Sales\Models\DeliveryOrderItem;
-use App\Domain\Sales\Models\SalesInvoice;
-use App\Domain\Sales\Models\SalesInvoiceItem;
 use App\Domain\Sales\Models\SalesOrder;
 use App\Domain\Sales\Models\SalesOrderItem;
 use App\Exceptions\ApiException;
@@ -482,20 +480,15 @@ final class DeliveryOrderService
         );
     }
 
+    /**
+     * DO dianggap sudah ditagih hanya bila ada qty yang masih tercatat pada
+     * invoice approved. Invoice yang di-disapprove mengembalikan
+     * invoiced_qty_base ke nol sehingga DO dapat dibatalkan kembali.
+     */
     private function hasActiveInvoice(DeliveryOrder $delivery): bool
     {
-        $itemIds = $delivery->items()->pluck('id')->all();
-
-        if ($itemIds === []) {
-            return false;
-        }
-
-        return SalesInvoiceItem::query()
-            ->whereIn('delivery_order_item_id', $itemIds)
-            ->whereHas('invoice', static function ($query): void {
-                $query->whereIn('status', [SalesInvoice::STATUS_DRAFT, SalesInvoice::STATUS_APPROVED])
-                    ->whereNull('deleted_at');
-            })
+        return $delivery->items()
+            ->where('invoiced_qty_base', '>', 0)
             ->exists();
     }
 

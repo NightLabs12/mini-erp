@@ -51,7 +51,7 @@ final class SalesInvoiceService
      */
     public function create(array $data): SalesInvoice
     {
-        $invoice = DB::transaction(function () use ($data): SalesInvoice {
+        return DB::transaction(function () use ($data): SalesInvoice {
             $day = $this->day($data['doc_date']);
             $period = $this->periods->assertOpen($day);
             $customerId = (int) $data['customer_id'];
@@ -67,7 +67,9 @@ final class SalesInvoiceService
                 'customer_id' => $customerId,
                 'due_date' => $day->addDays((int) $customer->payment_term_days)->toDateString(),
                 'status' => SalesInvoice::STATUS_DRAFT,
-                'mode' => $mode,
+                // Mode final hanya berlaku setelah approve berhasil; bila
+                // approve gagal seluruh transaksi (termasuk dokumen) rollback.
+                'mode' => SalesInvoice::MODE_DRAFT,
                 'tax_rate' => $this->taxRate($data['tax_rate'] ?? null),
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $this->actorId(),
@@ -76,14 +78,12 @@ final class SalesInvoiceService
             $this->syncItems($invoice, $customerId, $data['items'] ?? []);
             $this->recalculate($invoice);
 
+            if ($mode === SalesInvoice::MODE_FINAL) {
+                return $this->approve($invoice);
+            }
+
             return $this->load($invoice);
         }, 5);
-
-        if ($invoice->mode === SalesInvoice::MODE_FINAL) {
-            return $this->approve($invoice);
-        }
-
-        return $invoice;
     }
 
     /**
@@ -108,13 +108,16 @@ final class SalesInvoiceService
             $customerId = (int) ($data['customer_id'] ?? $locked->customer_id);
             /** @var Customer $customer */
             $customer = Customer::query()->findOrFail($customerId);
+            $requestedMode = array_key_exists('mode', $data) ? $this->mode($data['mode']) : (string) $locked->mode;
 
             $locked->forceFill([
                 'doc_date' => $day->toDateString(),
                 'period_id' => $period->getKey(),
                 'customer_id' => $customerId,
                 'due_date' => $day->addDays((int) $customer->payment_term_days)->toDateString(),
-                'mode' => array_key_exists('mode', $data) ? $this->mode($data['mode']) : (string) $locked->mode,
+                // Mode final tidak boleh tersimpan tanpa jurnal. Approve di
+                // bawah akan menetapkan final setelah posting berhasil.
+                'mode' => SalesInvoice::MODE_DRAFT,
                 'tax_rate' => array_key_exists('tax_rate', $data)
                     ? $this->taxRate($data['tax_rate'])
                     : (string) $locked->tax_rate,
@@ -126,6 +129,10 @@ final class SalesInvoiceService
             }
 
             $this->recalculate($locked);
+
+            if ($requestedMode === SalesInvoice::MODE_FINAL) {
+                return $this->approve($locked);
+            }
 
             return $this->load($locked);
         }, 5);

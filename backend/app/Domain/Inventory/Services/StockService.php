@@ -66,6 +66,10 @@ final class StockService
         $day = $this->day($date);
 
         return DB::transaction(function () use ($itemModel, $warehouseModel, $qty, $cost, $total, $ref, $day): StockLedger {
+            // Mutasi stok adalah posting ke periode. Guard di sini memastikan
+            // pemanggil langsung (di luar service dokumen) tidak dapat menulis
+            // ke periode yang sudah ditutup.
+            $this->periods->assertOpen($day, true);
             $balance = $this->lockBalance((int) $itemModel->getKey(), (int) $warehouseModel->getKey());
 
             return $this->persistMovement(
@@ -121,6 +125,7 @@ final class StockService
         $day = $this->day($date);
 
         return DB::transaction(function () use ($itemModel, $warehouseModel, $qty, $ref, $day): array {
+            $this->periods->assertOpen($day, true);
             $balance = $this->lockBalance((int) $itemModel->getKey(), (int) $warehouseModel->getKey());
 
             $oldQty = $this->qty((string) $balance->qty_base);

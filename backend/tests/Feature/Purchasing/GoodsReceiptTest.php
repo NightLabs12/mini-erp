@@ -119,6 +119,25 @@ it('menolak disapprove GR yang sudah ditagih', function (): void {
     }
 });
 
+it('mengizinkan disapprove GR setelah invoice-nya dibatalkan', function (): void {
+    $order = purchasingOrder();
+    $this->orders->approve($order);
+    $receipt = $this->receipts->approve(purchasingReceipt($order->fresh()));
+
+    $invoice = purchasingInvoice($receipt);
+    $this->invoices->approve($invoice);
+    $this->invoices->disapprove($invoice->fresh());
+
+    $draft = $this->receipts->disapprove($receipt->fresh());
+
+    expect($draft->status)->toBe(GoodsReceipt::STATUS_DRAFT);
+
+    $balance = $this->stock->balance($this->item, $this->warehouse);
+
+    expect((string) $balance->qty_base)->toBe('0.0000')
+        ->and((string) $balance->value)->toBe('0.00');
+});
+
 it('menolak disapprove GR bila ada mutasi lanjutan', function (): void {
     $order = purchasingOrder();
     $this->orders->approve($order);

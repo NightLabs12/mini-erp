@@ -113,6 +113,28 @@ it('mendukung mode final saat pembuatan invoice', function (): void {
         ->and($invoice->journal_id)->not->toBeNull();
 });
 
+it('memposting jurnal saat mode final diminta lewat update', function (): void {
+    $deliveryItem = $this->delivery->items()->firstOrFail();
+
+    $draft = $this->salesInvoices->create([
+        'doc_date' => $this->date,
+        'customer_id' => $this->customer->getKey(),
+        'items' => [['delivery_order_item_id' => $deliveryItem->getKey(), 'qty' => '5']],
+    ]);
+
+    expect($draft->status)->toBe(SalesInvoice::STATUS_DRAFT)
+        ->and($draft->journal_id)->toBeNull();
+
+    $approved = $this->salesInvoices->update($draft, ['mode' => 'final']);
+
+    expect($approved->status)->toBe(SalesInvoice::STATUS_APPROVED)
+        ->and($approved->mode)->toBe(SalesInvoice::MODE_FINAL)
+        ->and($approved->journal_id)->not->toBeNull();
+
+    $journal = Journal::query()->findOrFail($approved->journal_id);
+    assertJournalBalanced($journal);
+});
+
 it('menolak qty invoice melebihi sisa DO', function (): void {
     $deliveryItem = $this->delivery->items()->firstOrFail();
 

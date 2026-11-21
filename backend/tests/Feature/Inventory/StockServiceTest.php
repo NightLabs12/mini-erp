@@ -241,6 +241,37 @@ it('menolak reverse bila periode dokumen sudah ditutup', function (): void {
     }
 });
 
+it('menolak mutasi langsung pada periode yang sudah ditutup', function (): void {
+    accountingPeriod((int) $this->date->year, (int) $this->date->month, 'closed');
+
+    try {
+        $this->stock->receive(
+            $this->item,
+            $this->warehouse,
+            '10',
+            '1000',
+            ['type' => 'GR', 'id' => 1],
+            $this->date,
+        );
+        $this->fail('Receive pada periode closed seharusnya ditolak.');
+    } catch (ApiException $exception) {
+        expect($exception->errorCode())->toBe('PERIOD_CLOSED');
+    }
+
+    try {
+        $this->stock->issue(
+            $this->item,
+            $this->warehouse,
+            '1',
+            ['type' => 'DO', 'id' => 1],
+            $this->date,
+        );
+        $this->fail('Issue pada periode closed seharusnya ditolak.');
+    } catch (ApiException $exception) {
+        expect($exception->errorCode())->toBe('PERIOD_CLOSED');
+    }
+});
+
 it('menjaga balance_value konsisten dengan SUM ledger', function (): void {
     $this->stock->receive(
         $this->item,

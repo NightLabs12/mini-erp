@@ -46,7 +46,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
 | Settings | `settings` bertipe dengan nilai default aman; `account_settings` terisi 15 pemetaan akun |
 | Fondasi API | Format error JSON global, CORS terbatas, pagination, filter, sort standar |
-| Kualitas | Pint, Larastan level 6, Pest (292 test), ESLint, `tsc` strict |
+| Kualitas | Pint, Larastan level 6, Pest (297 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
 Modul Manufacturing (opsional) belum dikerjakan. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
