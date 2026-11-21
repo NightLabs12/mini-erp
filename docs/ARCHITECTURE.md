@@ -597,6 +597,27 @@ Execution Time: 93.860 ms
 
 Indeks baru `(item_id, movement_date, id)` membuat slice Kartu Stok tetap di bawah 100 ms.
 
+## Frontend (Fase 9A)
+
+```mermaid
+flowchart LR
+    R["React Router"] --> P["ProtectedLayout"]
+    P --> A["AuthProvider (/auth/me)"]
+    P --> L["AppLayout (sidebar per permission)"]
+    L --> D["DashboardPage"]
+    D --> Q["TanStack Query"]
+    Q --> C["api client + Bearer token"]
+    C --> API["/api/v1"]
+```
+
+- **Auth**: token Sanctum disimpan di `localStorage` lewat `tokenStore`. `AuthProvider` memuat `/auth/me` saat aplikasi dibuka, menyediakan `login`, `logout`, `hasPermission`, dan `hasAnyPermission`. Respons `401` membersihkan token dan mengarahkan pengguna ke `/login`.
+- **Otorisasi tampilan**: `<Can permission="...">` dan filter sidebar memakai daftar permission dari backend. Ini hanya lapisan UX; Policy dan middleware backend tetap menjadi pengaman.
+- **Data fetching**: `api` client membungkus `fetch`, menambahkan Bearer token, menormalisasi error `{ message, code, errors }`, dan menangani `204`. TanStack Query menyimpan cache dashboard dengan `staleTime` 30 detik.
+- **Layout**: sidebar pohon per modul (Utama, Master, Pembelian, Penjualan, Persediaan, Akuntansi, Laporan, Sistem) yang menyembunyikan grup tanpa item yang diizinkan. Topbar menampilkan user, role, dan logout; drawer untuk layar kecil.
+- **Dashboard**: kartu penjualan/pembelian bulan ini, nilai persediaan, AP/AR, grafik area Recharts enam bulan, tabel stok minimum, dan ringkasan dokumen draft.
+- **Komponen**: `DataTable` memakai TanStack Table untuk row model dengan sorting dan pagination server-side; `Modal`/`ConfirmDialog` menangani Escape, scroll lock, dan `aria-modal`; `ToastProvider` menyediakan notifikasi `aria-live`.
+- **Build**: Vite memecah chunk vendor (`react`, `query`, `charts`) agar bundle awal tetap kecil dan peringatan ukuran chunk hilang.
+
 ## Keamanan
 
 - Sanctum bearer token dengan masa berlaku dari `SANCTUM_EXPIRATION`.

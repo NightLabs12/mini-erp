@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import { queryClient } from './app/query-client'
 import { router } from './app/router'
+import { AuthProvider } from './auth/AuthProvider'
+import { ToastProvider } from './components/ui/ToastProvider'
 import './index.css'
 
 const rootElement = document.getElementById('root')
@@ -15,7 +17,11 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <AuthProvider>
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
+      </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

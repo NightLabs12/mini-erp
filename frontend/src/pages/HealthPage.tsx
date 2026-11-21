@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ApiError, apiFetch } from '../lib/api'
+import { ApiError, api } from '../lib/api'
 import { formatDateTime } from '../lib/format'
 import { t } from '../lib/i18n'
 
@@ -97,7 +97,7 @@ function HealthSummary({ data }: { data: HealthResponse }) {
 export function HealthPage() {
   const query = useQuery({
     queryKey: ['health'],
-    queryFn: () => apiFetch<HealthResponse>('/health'),
+    queryFn: () => api.get<HealthResponse>('/health'),
   })
 
   return (

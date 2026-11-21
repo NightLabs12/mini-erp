@@ -1,3 +1,5 @@
+import { tokenStore } from './token'
+
 export interface ApiErrorBody {
   message: string
   code: string
@@ -18,7 +20,36 @@ export class ApiError extends Error {
   }
 }
 
+export interface ApiQuery {
+  [key: string]: string | number | boolean | null | undefined
+}
+
+export interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  body?: unknown
+  query?: ApiQuery
+  signal?: AbortSignal
+}
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api/v1'
+
+function normalizeErrors(value: unknown): Record<string, string[]> {
+  if (typeof value !== 'object' || value === null) {
+    return {}
+  }
+
+  const errors: Record<string, string[]> = {}
+
+  for (const [key, messages] of Object.entries(value)) {
+    if (Array.isArray(messages)) {
+      errors[key] = messages.filter((message): message is string => typeof message === 'string')
+    } else if (typeof messages === 'string') {
+      errors[key] = [messages]
+    }
+  }
+
+  return errors
+}
 
 function toErrorBody(payload: unknown, status: number): ApiErrorBody {
   if (
@@ -30,10 +61,7 @@ function toErrorBody(payload: unknown, status: number): ApiErrorBody {
     return {
       message: payload.message,
       code: 'code' in payload && typeof payload.code === 'string' ? payload.code : `HTTP_${status}`,
-      errors:
-        'errors' in payload && typeof payload.errors === 'object' && payload.errors !== null
-          ? (payload.errors as Record<string, string[]>)
-          : {},
+      errors: 'errors' in payload ? normalizeErrors(payload.errors) : {},
     }
   }
 
@@ -44,21 +72,110 @@ function toErrorBody(payload: unknown, status: number): ApiErrorBody {
   }
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers,
-    },
+function buildUrl(path: string, query?: ApiQuery): string {
+  const url = `${baseUrl}${path}`
+
+  if (!query) {
+    return url
+  }
+
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === '') {
+      continue
+    }
+
+    params.set(key, String(value))
+  }
+
+  const serialized = params.toString()
+
+  return serialized === '' ? url : `${url}?${serialized}`
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return null
+  }
+}
+
+export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  const token = tokenStore.get()
+
+  if (token !== null) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  let body: string | undefined
+
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    body = JSON.stringify(options.body)
+  }
+
+  const response = await fetch(buildUrl(path, options.query), {
+    method: options.method ?? 'GET',
+    headers,
+    body,
+    signal: options.signal,
   })
 
-  const payload: unknown = await response.json().catch(() => null)
+  if (response.status === 204) {
+    return undefined as T
+  }
+
+  const text = await response.text()
+  const payload = text === '' ? null : parseJson(text)
 
   if (!response.ok) {
-    throw new ApiError(response.status, toErrorBody(payload, response.status))
+    const errorBody = toErrorBody(payload, response.status)
+
+    // Token kedaluwarsa atau dicabut: bersihkan agar AuthProvider
+    // mengarahkan pengguna kembali ke halaman login.
+    if (response.status === 401 && !path.startsWith('/auth/login')) {
+      tokenStore.clear()
+    }
+
+    throw new ApiError(response.status, errorBody)
   }
 
   return payload as T
+}
+
+export const api = {
+  get<T>(path: string, query?: ApiQuery, signal?: AbortSignal): Promise<T> {
+    return apiRequest<T>(path, { query, signal })
+  },
+
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return apiRequest<T>(path, { method: 'POST', body })
+  },
+
+  put<T>(path: string, body?: unknown): Promise<T> {
+    return apiRequest<T>(path, { method: 'PUT', body })
+  },
+
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return apiRequest<T>(path, { method: 'PATCH', body })
+  },
+
+  delete<T>(path: string): Promise<T> {
+    return apiRequest<T>(path, { method: 'DELETE' })
+  },
+}
+
+export function toErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return 'Terjadi kesalahan yang tidak diketahui.'
 }

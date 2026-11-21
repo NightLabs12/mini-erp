@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 7 selesai: laporan keuangan komparatif, rekonsiliasi, ekspor Excel/PDF, dashboard, dan optimasi query.**
+**Fase 9A selesai: fondasi frontend React (login, RBAC menu, dashboard, komponen UI).**
 
 | Area | Kondisi |
 | --- | --- |
@@ -42,6 +42,9 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Rekonsiliasi | AP, AR, Persediaan, dan GR/IR dengan status OK/MISMATCH/SKIPPED; terintegrasi ke validasi tutup periode |
 | Ekspor laporan | Satu `ReportExporter`: JSON, Excel, dan PDF untuk seluruh kode laporan lewat `GET /reports/{code}` |
 | Dashboard | `GET /dashboard/summary`: penjualan/pembelian bulan ini, nilai persediaan, AP/AR, seri 6 bulan, stok minimum, dokumen menunggu approval |
+| Frontend fondasi | React 18 + TypeScript strict + Tailwind v4 + React Router + TanStack Query/Table; login token Sanctum, AuthContext, `<Can>` permission, sidebar pohon per permission, dashboard Recharts |
+| Komponen UI | `DataTable` (search/sort/pagination), `FormField`, `Modal`, `ConfirmDialog`, `Toast`, `StatusBadge`, `EmptyState`, `Skeleton` |
+| Frontend quality | `tsc -b` strict dan ESLint bersih; build produksi dipecah per vendor (react, query, charts) |
 | Performa | Index pelaporan, seed 20.000 baris jurnal, EXPLAIN ANALYZE GL ≈101 ms dan Kartu Stok ≈94 ms (target <500 ms) |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
 | Settings | `settings` bertipe dengan nilai default aman; `account_settings` terisi 15 pemetaan akun |
@@ -49,7 +52,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Kualitas | Pint, Larastan level 6, Pest (297 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Manufacturing (opsional) belum dikerjakan. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Manufacturing (opsional) belum dikerjakan. Halaman modul di frontend masih berupa placeholder sampai fase UI berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -116,6 +119,17 @@ Modul Manufacturing (opsional) belum dikerjakan. Rencana lengkap ada di [`docs/S
 - **Ekspor**: `GET /reports/{code}?format=json|xlsx|pdf` untuk seluruh laporan melalui satu `ReportExporter`.
 - **Dashboard**: `GET /dashboard/summary`.
 - **Performa**: seed opsional `PerformanceSeeder` (20.000 baris jurnal) dan index pelaporan; EXPLAIN ANALYZE terdokumentasi di `docs/ARCHITECTURE.md`.
+
+### Cakupan Frontend (Fase 9A)
+
+- **Stack**: React 18, TypeScript strict (`noUncheckedIndexedAccess`), Tailwind CSS v4, React Router, TanStack Query, TanStack Table, Recharts, react-hook-form.
+- **API client** (`src/lib/api.ts`): wrapper `fetch` dengan header Bearer, parsing error `{ message, code, errors }`, `ApiError`, dan pembersihan token otomatis saat `401`.
+- **AuthContext**: login/logout, bootstrap `GET /auth/me`, daftar role dan permission, `hasPermission`/`hasAnyPermission`.
+- **`<Can permission="...">`**: menyembunyikan elemen tanpa permission. Backend tetap menegakkan otorisasi.
+- **Layout**: sidebar pohon per modul yang hanya menampilkan menu sesuai permission, topbar user/role/logout, drawer mobile.
+- **Halaman**: Login (akun demo), Dashboard (kartu metrik, grafik penjualan enam bulan, stok minimum, dokumen menunggu approval), Status sistem, dan placeholder modul.
+- **Komponen umum**: `DataTable` (search, sort server-side, pagination, skeleton, empty state), `FormField`, `Modal`, `ConfirmDialog`, `Toast`, `StatusBadge`, `EmptyState`, `Skeleton`.
+- **Verifikasi**: `make fe-lint`, `make fe-typecheck`, dan `make fe-build` bersih.
 
 ### Mode demo
 
@@ -336,7 +350,7 @@ Slug mengikuti `{modul}.{resource}.{aksi}`. Daftar lengkapnya dihasilkan dari `A
 | `finance` | Accounting penuh, invoice dan payment approve, seluruh laporan |
 | `viewer` | Hanya aksi `view` di semua modul |
 
-Backend menegakkan lewat Policy (`UserPolicy`, `AuditLogPolicy`) dan middleware `permission:`. Frontend nanti hanya menyembunyikan tombol berdasarkan permission yang sama.
+Backend menegakkan lewat Policy (`UserPolicy`, `AuditLogPolicy`) dan middleware `permission:`. Frontend menyembunyikan menu dan tombol berdasarkan permission yang sama lewat `AuthContext` dan komponen `<Can>`; backend tetap menjadi pengaman utama.
 
 ## Test dan kualitas
 
