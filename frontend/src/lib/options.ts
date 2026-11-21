@@ -49,6 +49,22 @@ export function useItemOptions() {
   })
 }
 
+export function useSupplierOptions() {
+  return useQuery({
+    queryKey: ['options', 'suppliers'],
+    queryFn: () => fetchOptions('/suppliers', common),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useWarehouseOptions() {
+  return useQuery({
+    queryKey: ['options', 'warehouses'],
+    queryFn: () => fetchOptions('/warehouses', common),
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function useCustomerOptions() {
   return useQuery({
     queryKey: ['options', 'customers'],

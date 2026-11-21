@@ -597,7 +597,7 @@ Execution Time: 93.860 ms
 
 Indeks baru `(item_id, movement_date, id)` membuat slice Kartu Stok tetap di bawah 100 ms.
 
-## Frontend (Fase 9A-9B)
+## Frontend (Fase 9A-9C)
 
 ```mermaid
 flowchart LR
@@ -626,6 +626,19 @@ flowchart LR
 - Tombol tambah/ubah/hapus mengikuti permission `master.{resource}.create|update|delete`; backend tetap menegakkan otorisasi.
 - Item memakai `useFieldArray` untuk konversi satuan, menyaring satuan base dari pilihan, dan mengirim seluruh daftar konversi agar backend menyelaraskannya dalam satu transaksi.
 - Akun COA memakai API `/accounts` baru: level dihitung dari parent, siklus ditolak, dan penghapusan dijaga terhadap anak, kategori item, `account_settings`, dan baris jurnal.
+
+### Dokumen transaksi
+
+- **`EditableGrid`** memakai TanStack Table untuk row model dan mengelola input terkontrol per sel. Navigasi `ArrowUp`/`ArrowDown`/`Enter` memindahkan fokus antarbaris; `Enter` di baris terakhir menambah baris baru lalu memfokuskan kolom pertama.
+- **Lookup item** membuka modal dengan pencarian server-side (`?search=`), lalu mengambil detail item (`GET /items/{id}`) agar daftar konversi dan satuan base tersedia untuk perhitungan.
+- **Perhitungan** memakai `src/lib/decimal.ts` berbasis BigInt: `qty_base = round(qty × faktor, 4)`, baris bruto `round(qty_base × (harga ÷ faktor), 2)`, harga bersih setelah diskon, PPN `round(basis × tarif ÷ 100, 2)`, dan total. `decMul` memotong seperti `bcmul`, `decDiv`/`decRound` memakai HALF_UP seperti `Decimal` backend. Uji cepat memverifikasi contoh 1.440.000/Dus → 10.000/Pcs, PPN 11%, dan pembulatan 10,005 → 10,01.
+- **Dokumen sumber**: GR memilih PO approved dan memuat baris sisa diterima; PI memilih GR approved dan memuat sisa ditagih beserta biaya GR; DO memilih SO approved dan memuat sisa dikirim; SI memilih DO approved dan mengambil harga dari SO. Semua loader memakai detail item untuk mengubah qty base kembali ke satuan input.
+- **Cek stok**: DO memakai gudang dari SO, Transfer memakai gudang asal, Opname memakai gudang dokumen. `GET /items/{id}/stock` dipanggil saat item dipilih dan saat gudang berubah; qty yang melebihi saldo ditandai merah di kolom Tersedia, dan backend tetap menolak dengan `STOCK_INSUFFICIENT`.
+- **Harga jual SO**: `GET /selling-prices/lookup` dipanggil saat item/satuan berubah. Override manual hanya aktif bila pengguna memiliki `sales.sales-order.override-price`; backend tetap memvalidasi.
+- **Aksi dokumen**: `DocumentShell` menampilkan badge status, tombol sesuai status dan permission, serta panel audit yang memuat `GET /{resource}/{id}/audit` saat dibuka. `useDocumentActions` menangani konfirmasi, toast, dan error bisnis (`code`, `message`, `errors`) sehingga `STOCK_INSUFFICIENT` atau `PERIOD_CLOSED` terlihat jelas.
+- **Mode final invoice**: SI dapat dibuat sebagai draft atau final; mode final memakai alur atomik backend, dan UI menampilkan status hasil setelah approve.
+- **Jurnal manual**: baris akun/debit/kredit dengan indikator seimbang real-time, tombol approve dan reverse, serta read-only setelah posted.
+- **Routing**: `/documents/:docType`, `/documents/:docType/new`, dan `/documents/:docType/:id` memakai registry dokumen; komponen form di-key per tipe+id agar state tidak bocor antar dokumen.
 
 ### Isolasi database test
 

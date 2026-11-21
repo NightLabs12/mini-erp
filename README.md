@@ -6,7 +6,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 
 ## Status
 
-**Fase 9B selesai: CRUD master data di frontend dengan validasi zod dan error field dari API.**
+**Fase 9C selesai: halaman dokumen transaksi dengan EditableGrid, kalkulasi real-time, aksi status, dan audit.**
 
 | Area | Kondisi |
 | --- | --- |
@@ -46,6 +46,8 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Komponen UI | `DataTable` (search/sort/pagination), `FormField`, `Modal`, `ConfirmDialog`, `Toast`, `StatusBadge`, `EmptyState`, `Skeleton` |
 | Frontend quality | `tsc -b` strict dan ESLint bersih; build produksi dipecah per vendor (react, query, charts) |
 | Frontend master data | CRUD satuan, kategori, item + konversi, gudang, supplier, customer, harga jual, dan akun COA; validasi zod selaras FormRequest |
+| Frontend dokumen | PO, GR, PI, Payment Out, SO, DO, SI, Payment In, Transfer, Opname, dan Jurnal manual; EditableGrid dengan keyboard, lookup item, konversi, harga jual, dan cek stok |
+| Aksi dokumen | Badge status, Approve/Disapprove/Close/Print sesuai status+permission, read-only setelah approved, panel audit, dan error bisnis (mis. `STOCK_INSUFFICIENT`) |
 | API akun COA | `GET/POST/PUT/DELETE /accounts` dengan level otomatis dari parent, proteksi siklus, dan guard hapus `ACCOUNT_IN_USE` |
 | Performa | Index pelaporan, seed 20.000 baris jurnal, EXPLAIN ANALYZE GL ≈101 ms dan Kartu Stok ≈94 ms (target <500 ms) |
 | Mode demo | Middleware `demo.readonly` memblokir perubahan user/role/setting saat `DEMO_MODE=true` |
@@ -54,7 +56,7 @@ Mini ERP untuk perusahaan dagang dan manufaktur kaos fiktif. Dibangun sebagai po
 | Kualitas | Pint, Larastan level 6, Pest (303 test), ESLint, `tsc` strict |
 | Docker | Diuji otomatis lewat job CI `docker-smoke`: build image, tunggu postgres + app + nginx healthy, migrate, cek `/api/v1/health` |
 
-Modul Manufacturing (opsional) belum dikerjakan. Halaman transaksi di frontend masih berupa placeholder sampai fase UI berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
+Modul Manufacturing (opsional) belum dikerjakan. Halaman laporan lain dan dokumen Purchase Request masih berupa placeholder sampai fase UI berikutnya. Rencana lengkap ada di [`docs/SPEC.md`](docs/SPEC.md); kontrak API di [`docs/API.md`](docs/API.md).
 
 ### Cakupan Core
 
@@ -122,7 +124,7 @@ Modul Manufacturing (opsional) belum dikerjakan. Halaman transaksi di frontend m
 - **Dashboard**: `GET /dashboard/summary`.
 - **Performa**: seed opsional `PerformanceSeeder` (20.000 baris jurnal) dan index pelaporan; EXPLAIN ANALYZE terdokumentasi di `docs/ARCHITECTURE.md`.
 
-### Cakupan Frontend (Fase 9A-9B)
+### Cakupan Frontend (Fase 9A-9C)
 
 - **Stack**: React 18, TypeScript strict (`noUncheckedIndexedAccess`), Tailwind CSS v4, React Router, TanStack Query, TanStack Table, Recharts, react-hook-form.
 - **API client** (`src/lib/api.ts`): wrapper `fetch` dengan header Bearer, parsing error `{ message, code, errors }`, `ApiError`, dan pembersihan token otomatis saat `401`.
@@ -133,6 +135,10 @@ Modul Manufacturing (opsional) belum dikerjakan. Halaman transaksi di frontend m
 - **Komponen umum**: `DataTable` (search, sort server-side, pagination, skeleton, empty state), `FormField`, `Modal`, `ConfirmDialog`, `Toast`, `StatusBadge`, `EmptyState`, `Skeleton`.
 - **Master data**: halaman CRUD untuk satuan, kategori item, item + konversi satuan, gudang, supplier, customer, harga jual, dan akun COA. Setiap form memakai zod yang selaras dengan FormRequest, menampilkan error field dari respons 422, serta menyembunyikan tombol tambah/ubah/hapus sesuai permission.
 - **Komponen CRUD bersama**: `MasterCrudPage` menangani daftar, pencarian, sorting, pagination, modal form, konfirmasi hapus, toast, dan invalidasi cache.
+- **Dokumen transaksi**: PO, GR, PI, Payment Out, SO, DO, SI, Payment In, Transfer gudang, Stock opname, dan Jurnal manual. `EditableGrid` mendukung tambah/hapus baris, navigasi Tab/Enter/ArrowUp/ArrowDown, lookup item via modal pencarian, pilihan satuan dengan `qty_base` real-time, subtotal/diskon/PPN/total yang sama dengan backend (BigInt, HALF_UP), lookup harga jual untuk SO, dan cek stok untuk DO/Transfer.
+- **Aksi dan status**: tombol Approve/Disapprove/Close/Print mengikuti status dan permission; dokumen read-only setelah approved; panel riwayat audit; error bisnis ditampilkan dengan kode mesin dan detail field.
+- **Sumber dokumen**: GR memuat baris dari PO, PI dari GR, DO dari SO, dan SI dari DO beserta harga SO; sisa qty dihitung dari qty base yang sudah diterima/ditagih/dikirim.
+- **Laba rugi**: halaman `/reports/income-statement` menampilkan laba kotor dan laba bersih untuk memverifikasi acceptance langkah 8.
 - **Verifikasi**: `make fe-lint`, `make fe-typecheck`, dan `make fe-build` bersih.
 
 ### Mode demo

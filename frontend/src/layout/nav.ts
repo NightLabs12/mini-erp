@@ -53,20 +53,20 @@ export const navigation: NavGroup[] = [
     label: 'Pembelian',
     items: [
       moduleItem('purchase-requests', 'Purchase Request', 'purchase.purchase-request.view'),
-      moduleItem('purchase-orders', 'Purchase Order', 'purchase.purchase-order.view'),
-      moduleItem('goods-receipts', 'Goods Receipt', 'purchase.goods-receipt.view'),
-      moduleItem('purchase-invoices', 'Purchase Invoice', 'purchase.purchase-invoice.view'),
-      moduleItem('supplier-payments', 'Payment Out', 'purchase.supplier-payment.view'),
+      { key: 'purchase-orders', label: 'Purchase Order', to: '/documents/purchase-orders', permission: 'purchase.purchase-order.view' },
+      { key: 'goods-receipts', label: 'Goods Receipt', to: '/documents/goods-receipts', permission: 'purchase.goods-receipt.view' },
+      { key: 'purchase-invoices', label: 'Purchase Invoice', to: '/documents/purchase-invoices', permission: 'purchase.purchase-invoice.view' },
+      { key: 'supplier-payments', label: 'Payment Out', to: '/documents/supplier-payments', permission: 'purchase.supplier-payment.view' },
     ],
   },
   {
     key: 'sales',
     label: 'Penjualan',
     items: [
-      moduleItem('sales-orders', 'Sales Order', 'sales.sales-order.view'),
-      moduleItem('delivery-orders', 'Surat Jalan', 'sales.delivery-order.view'),
-      moduleItem('sales-invoices', 'Sales Invoice', 'sales.sales-invoice.view'),
-      moduleItem('customer-payments', 'Payment In', 'sales.customer-payment.view'),
+      { key: 'sales-orders', label: 'Sales Order', to: '/documents/sales-orders', permission: 'sales.sales-order.view' },
+      { key: 'delivery-orders', label: 'Surat Jalan', to: '/documents/delivery-orders', permission: 'sales.delivery-order.view' },
+      { key: 'sales-invoices', label: 'Sales Invoice', to: '/documents/sales-invoices', permission: 'sales.sales-invoice.view' },
+      { key: 'customer-payments', label: 'Payment In', to: '/documents/customer-payments', permission: 'sales.customer-payment.view' },
     ],
   },
   {
@@ -75,15 +75,15 @@ export const navigation: NavGroup[] = [
     items: [
       moduleItem('stock-balances', 'Saldo stok', 'inventory.stock.view'),
       moduleItem('stock-ledger', 'Ledger stok', 'inventory.stock.view'),
-      moduleItem('warehouse-transfers', 'Transfer gudang', 'inventory.warehouse-transfer.view'),
-      moduleItem('stock-opnames', 'Stock opname', 'inventory.stock-opname.view'),
+      { key: 'warehouse-transfers', label: 'Transfer gudang', to: '/documents/warehouse-transfers', permission: 'inventory.warehouse-transfer.view' },
+      { key: 'stock-opnames', label: 'Stock opname', to: '/documents/stock-opnames', permission: 'inventory.stock-opname.view' },
     ],
   },
   {
     key: 'accounting',
     label: 'Akuntansi',
     items: [
-      moduleItem('journals', 'Jurnal', 'accounting.journal.view'),
+      { key: 'journals', label: 'Jurnal', to: '/documents/journals', permission: 'accounting.journal.view' },
       moduleItem('accounting-periods', 'Periode akuntansi', 'accounting.period.view'),
     ],
   },
@@ -93,7 +93,7 @@ export const navigation: NavGroup[] = [
     items: [
       moduleItem('general-ledger', 'Buku besar', 'report.general-ledger.view'),
       moduleItem('trial-balance', 'Neraca saldo', 'report.trial-balance.view'),
-      moduleItem('income-statement', 'Laba rugi', 'report.income-statement.view'),
+      { key: 'income-statement', label: 'Laba rugi', to: '/reports/income-statement', permission: 'report.income-statement.view' },
       moduleItem('balance-sheet', 'Neraca', 'report.balance-sheet.view'),
       moduleItem('cash-bank', 'Kas dan bank', 'report.cash-bank.view'),
       moduleItem('journal-report', 'Laporan jurnal', 'report.journal.view'),

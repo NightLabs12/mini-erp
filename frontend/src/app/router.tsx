@@ -6,6 +6,8 @@ import { HealthPage } from '../pages/HealthPage'
 import { LoginPage } from '../pages/LoginPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { AccountsPage } from '../pages/master/AccountsPage'
+import { DocumentFormRoute, DocumentListRoute } from '../pages/documents/DocumentRoute'
+import { IncomeStatementPage } from '../pages/reports/IncomeStatementPage'
 import { CustomersPage } from '../pages/master/CustomersPage'
 import { ItemCategoriesPage } from '../pages/master/ItemCategoriesPage'
 import { ItemsPage } from '../pages/master/ItemsPage'
@@ -30,6 +32,10 @@ export const router = createBrowserRouter([
       { path: '/master/customers', element: <CustomersPage /> },
       { path: '/master/selling-prices', element: <SellingPricesPage /> },
       { path: '/master/accounts', element: <AccountsPage /> },
+      { path: '/documents/:docType', element: <DocumentListRoute /> },
+      { path: '/documents/:docType/new', element: <DocumentFormRoute /> },
+      { path: '/documents/:docType/:id', element: <DocumentFormRoute /> },
+      { path: '/reports/income-statement', element: <IncomeStatementPage /> },
       { path: '/modules/:moduleKey', element: <ComingSoonPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],

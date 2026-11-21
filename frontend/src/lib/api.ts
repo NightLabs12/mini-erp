@@ -168,6 +168,39 @@ export const api = {
   },
 }
 
+/**
+ * Mengunduh berkas (PDF/Excel) dengan header Authorization, lalu memicu
+ * unduhan di browser. `window.open` biasa tidak membawa bearer token.
+ */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const headers: Record<string, string> = {}
+  const token = tokenStore.get()
+
+  if (token !== null) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, { headers })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new ApiError(response.status, toErrorBody(text === '' ? null : parseJson(text), response.status))
+  }
+
+  const blob = await response.blob()
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)
+  const filename = match?.[1] ?? fallbackName
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 export function toErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message

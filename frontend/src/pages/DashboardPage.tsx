@@ -147,7 +147,7 @@ export function DashboardPage() {
 
         <Can permission="report.balance-sheet.view">
           <Link
-            to="/modules/balance-sheet"
+            to="/reports/income-statement"
             className="inline-flex min-h-9 items-center rounded-md border border-line bg-surface px-3 text-sm font-medium hover:border-ink-muted"
           >
             {t('dashboard.reportLink')}
